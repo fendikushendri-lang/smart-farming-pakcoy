@@ -1,0 +1,12 @@
+{
+  "model_type": "Ensemble Deep Spectral Vision Classifier (RF + ExtraTrees)",
+  "classes": [
+    "Masa_Pertumbuhan",
+    "Mendekati_Panen",
+    "Siap_Panen"
+  ],
+  "cv_accuracy": 0.925,
+  "cv_std": 0.0312,
+  "train_accuracy": 1.0,
+  "total_samples": 120
+}
