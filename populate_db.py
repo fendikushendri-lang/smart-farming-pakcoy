@@ -85,52 +85,52 @@ def populate(force=False):
 
     df = load_dataset()
     
-    # Konfigurasi tanaman/batch 40 HST
+    # Konfigurasi tanaman/batch 40 HST (Urut Kronologis dari PCK-001 Semai s.d. PCK-005 Panen Maksimal)
     plants_info = [
         {
             "plant_id": "PCK-001",
-            "name": "Pakcoy Hidroponik NFT A-1",
-            "batch": "Batch 2026-NFT-01",
+            "name": "Pakcoy Semai Polybag A-1 (Semai 10 HST)",
+            "batch": "Batch 2026-SEM-01",
             "variety": "Pakcoy Green Fortune",
             "start_day": 1,
-            "end_day": 28,
-            "notes": "Siklus tanam hidroponik NFT fase Siap Panen Prima (37 HST). Sisa 3 hari sebelum mencapai batas maksimal panen 40 HST."
+            "end_day": 10,
+            "notes": "Fase semai dan persemaian awal (10 HST). Daun kotiledon tumbuh seragam 2-4 helai."
         },
         {
             "plant_id": "PCK-002",
-            "name": "Pakcoy Polybag B-2 (Vegetatif)",
+            "name": "Pakcoy Polybag B-2 (Vegetatif 20 HST)",
             "batch": "Batch 2026-SUB-02",
             "variety": "Pakcoy Nauli F1",
             "start_day": 1,
-            "end_day": 16,
-            "notes": "Siklus tanam substrat polybag fase Vegetatif aktif (25 HST). Pertumbuhan daun pesat, sisa 15 hari menuju batas panen 40 HST."
+            "end_day": 20,
+            "notes": "Fase vegetatif aktif (20 HST) lebar daun 5.8 cm, irigasi pompa otomatis terjaga."
         },
         {
             "plant_id": "PCK-003",
-            "name": "Pakcoy DWC C-1 (Pre-Harvest)",
+            "name": "Pakcoy DWC C-1 (Pre-Harvest 30 HST)",
             "batch": "Batch 2026-DWC-03",
             "variety": "Pakcoy Green Fortune",
             "start_day": 1,
-            "end_day": 23,
-            "notes": "Sistem rakit apung DWC fase Pre-Harvest (32 HST). Kanopi daun memadat, sisa 8 hari menuju batas panen 40 HST."
+            "end_day": 30,
+            "notes": "Fase mendekati panen (30 HST), tajuk roset daun rimbun 8.5 cm."
         },
         {
             "plant_id": "PCK-004",
-            "name": "Pakcoy Vertikal Tower D-2 (Batas Panen)",
+            "name": "Pakcoy Vertikal Tower D-2 (Siap Panen 36 HST)",
             "batch": "Batch 2026-AERO-04",
             "variety": "Pakcoy Nauli F1",
             "start_day": 1,
-            "end_day": 31,
-            "notes": "Sistem aeroponik vertikal tower telah mencapai batas akhir panen 40 HST (Day 31 = DAP 40). Wajib dipanen hari ini!"
+            "end_day": 36,
+            "notes": "Fase siap panen komersial optimal (36 HST), lebar daun 10.5 cm siap petik prima."
         },
         {
             "plant_id": "PCK-005",
-            "name": "Pakcoy Semai Polybag E-1",
-            "batch": "Batch 2026-SEM-05",
+            "name": "Pakcoy Smart IoT E-1 (Batas Panen 40 HST)",
+            "batch": "Batch 2026-IoT-05",
             "variety": "Pakcoy Green Fortune",
             "start_day": 1,
-            "end_day": 5,
-            "notes": "Fase semai dan persemaian awal (14 HST). Daun kotiledon tumbuh seragam, sisa 26 hari menuju batas panen 40 HST."
+            "end_day": 40,
+            "notes": "Siklus batas panen maksimal pakcoy 40 HST, lebar daun 11.2 cm (Standar pasar komersial terpenuhi)."
         },
         {
             "plant_id": "PCK-FULL40",
@@ -139,7 +139,7 @@ def populate(force=False):
             "variety": "Pakcoy Green Fortune",
             "start_day": 1,
             "end_day": 40,
-            "notes": "Siklus pengamatan kontinu 40 hari penuh (120 observasi, Day 1-40, DAP 10-49 HST) mencakup seluruh tahapan budidaya."
+            "notes": "Siklus pengamatan kontinu 40 hari penuh mencakup seluruh tahapan budidaya pakcoy."
         }
     ]
     
