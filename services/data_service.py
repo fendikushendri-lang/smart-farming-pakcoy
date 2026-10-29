@@ -18,7 +18,7 @@ def get_plant_details(plant_id: str):
         return dict(row)
     return None
 
-def get_growth_history(plant_id: str, limit: int = 100):
+def get_growth_history(plant_id: str, limit: int = 5000):
     conn = get_connection()
     df = pd.read_sql_query(
         "SELECT * FROM observations WHERE plant_id = ? ORDER BY day ASC, time ASC LIMIT ?",
