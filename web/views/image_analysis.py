@@ -36,11 +36,23 @@ def render_image_analysis():
 
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     sample_dir = os.path.join(BASE_DIR, "data", "images")
-    default_sample = os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_008.jpg")
-    if not os.path.exists(default_sample):
-        # Fallback to any existing sample
-        samples_found = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True)
-        default_sample = samples_found[0] if samples_found else None
+    light_sample_dir = os.path.join(BASE_DIR, "data", "sample_images")
+
+    # Safely locate default sample image
+    default_sample = None
+    primary_sample = os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_008.jpg")
+    if os.path.isfile(primary_sample):
+        default_sample = primary_sample
+    else:
+        # Fallback to any existing sample in data/images
+        samples_found = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True) if os.path.isdir(sample_dir) else []
+        if samples_found:
+            default_sample = samples_found[0]
+        else:
+            # Fallback to lightweight sample_images
+            light_samples = glob.glob(os.path.join(light_sample_dir, "*.jpg")) if os.path.isdir(light_sample_dir) else []
+            if light_samples:
+                default_sample = light_samples[0]
 
     # =========================================================================
     # MODE 1: ANALISIS TUNGGAL (MATCHING USER SCREENSHOT EXACTLY)
@@ -57,20 +69,45 @@ def render_image_analysis():
             )
         with c_up2:
             st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
-            with st.expander("🌿 Atau Pilih Sampel Dataset (120 Foto)", expanded=False):
+            with st.expander("🌿 Atau Pilih Sampel Dataset", expanded=False):
                 sel_cat = st.selectbox("Fase:", ["Masa_Pertumbuhan", "Mendekati_Panen", "Siap_Panen"], key="exp_cat")
                 cat_folder = os.path.join(sample_dir, sel_cat)
-                cat_imgs = glob.glob(os.path.join(cat_folder, "*.jpg"))
-                sel_img = st.selectbox("Foto:", [os.path.basename(p) for p in cat_imgs[:25]] if cat_imgs else ["default"], key="exp_img")
-                dataset_choice = os.path.join(cat_folder, sel_img) if cat_imgs else default_sample
+                cat_imgs = glob.glob(os.path.join(cat_folder, "*.jpg")) if os.path.isdir(cat_folder) else []
+                fallback_cat = os.path.join(light_sample_dir, f"{sel_cat}.jpg")
+                
+                dataset_choice = None
+                if cat_imgs:
+                    sel_img = st.selectbox("Foto:", [os.path.basename(p) for p in cat_imgs[:25]], key="exp_img")
+                    dataset_choice = os.path.join(cat_folder, sel_img)
+                elif os.path.isfile(fallback_cat):
+                    dataset_choice = fallback_cat
+                    st.caption(f"ℹ️ Menggunakan sampel representatif fase **{sel_cat.replace('_', ' ')}**")
+                else:
+                    st.caption("ℹ️ Sampel dataset tidak ditemukan di server. Silakan unggah foto di samping.")
 
         # Determine Image to Analyze
+        image_to_analyze = None
         if uploaded_file is not None:
             image_to_analyze = uploaded_file
-        elif 'dataset_choice' in locals() and os.path.exists(dataset_choice):
+        elif dataset_choice and isinstance(dataset_choice, str) and os.path.isfile(dataset_choice):
             image_to_analyze = dataset_choice
-        else:
+        elif default_sample and isinstance(default_sample, str) and os.path.isfile(default_sample):
             image_to_analyze = default_sample
+
+        # If no image is provided at all, show friendly upload prompt instead of error
+        if image_to_analyze is None:
+            st.html("""
+            <div style="background: #f8fafc; border: 2px dashed #94a3b8; border-radius: 14px; padding: 36px 20px; text-align: center; margin-top: 18px;">
+                <div style="font-size: 2.5rem; margin-bottom: 8px;">📷</div>
+                <h3 style="color: #0f172a; font-size: 1.15rem; font-weight: 700; margin: 0 0 6px 0;">
+                    Silakan Unggah Foto Sampel Tanaman
+                </h3>
+                <p style="color: #64748b; font-size: 0.92rem; max-width: 500px; margin: 0 auto; line-height: 1.5;">
+                    Unggah foto tanaman pakcoy Anda melalui panel pengunggah di atas untuk mengekstraksi 12 parameter biometrik, kalkulasi fase kematangan, dan visualisasi aktivasi Grad-CAM.
+                </p>
+            </div>
+            """)
+            return
 
         # Run Computer Vision inference & biometric extraction
         with st.spinner("Mengekstraksi metrik biometrik citra daun via CNN..."):
@@ -343,26 +380,53 @@ def render_image_analysis():
         </div>
         """)
         
-        c_cmp1, c_cmp2 = st.columns(2, gap="large")
-        
-        all_samples = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True)
+        all_samples = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True) if os.path.isdir(sample_dir) else []
+        if not all_samples and os.path.isdir(light_sample_dir):
+            all_samples = glob.glob(os.path.join(light_sample_dir, "*.jpg"))
+            
         sample_dict = {f"{os.path.basename(os.path.dirname(p))} - {os.path.basename(p)}": p for p in all_samples}
         sample_keys = list(sample_dict.keys())
         
-        with c_cmp1:
-            st.markdown("<h4 style='color: #047857; font-size: 1rem;'>📷 Foto Sampel A (Awal / Kontrol)</h4>", unsafe_allow_html=True)
-            def_idx_a = 0
-            sel_a = st.selectbox("Pilih Sampel A:", sample_keys, index=def_idx_a, key="cmp_sel_a")
-            path_a = sample_dict[sel_a]
+        path_a = None
+        path_b = None
+        
+        if len(sample_keys) >= 2:
+            c_cmp1, c_cmp2 = st.columns(2, gap="large")
+            with c_cmp1:
+                st.markdown("<h4 style='color: #047857; font-size: 1rem;'>📷 Foto Sampel A (Awal / Kontrol)</h4>", unsafe_allow_html=True)
+                def_idx_a = 0
+                sel_a = st.selectbox("Pilih Sampel A:", sample_keys, index=def_idx_a, key="cmp_sel_a")
+                path_a = sample_dict[sel_a]
+                
+            with c_cmp2:
+                st.markdown("<h4 style='color: #0369a1; font-size: 1rem;'>📷 Foto Sampel B (Perkembangan / Uji)</h4>", unsafe_allow_html=True)
+                def_idx_b = min(len(sample_keys) - 1, 1 if len(sample_keys) > 1 else 0)
+                sel_b = st.selectbox("Pilih Sampel B:", sample_keys, index=def_idx_b, key="cmp_sel_b")
+                path_b = sample_dict[sel_b]
+        else:
+            st.info("💡 Mode perbandingan membutuhkan dua foto sampel. Silakan unggah Foto A dan Foto B di bawah:")
+            c_u1, c_u2 = st.columns(2)
+            with c_u1:
+                up_a = st.file_uploader("Unggah Foto Sampel A (JPG/PNG)", type=["jpg", "jpeg", "png"], key="cmp_up_a")
+                if up_a:
+                    path_a = up_a
+            with c_u2:
+                up_b = st.file_uploader("Unggah Foto Sampel B (JPG/PNG)", type=["jpg", "jpeg", "png"], key="cmp_up_b")
+                if up_b:
+                    path_b = up_b
+                    
+            if path_a is None or path_b is None:
+                st.caption("ℹ️ Menunggu unggahan kedua foto untuk melakukan komparasi biometrik.")
+                return
+
+        with st.spinner("Memproses analisis biometrik kedua sampel foto..."):
             res_a = analyze_image_with_gradcam(path_a)
-            st.image(res_a["original_image"], caption=f"Foto A: {res_a['predicted_label']}", use_container_width=True)
-            
-        with c_cmp2:
-            st.markdown("<h4 style='color: #0369a1; font-size: 1rem;'>📷 Foto Sampel B (Perkembangan / Uji)</h4>", unsafe_allow_html=True)
-            def_idx_b = min(len(sample_keys) - 1, 35)
-            sel_b = st.selectbox("Pilih Sampel B:", sample_keys, index=def_idx_b, key="cmp_sel_b")
-            path_b = sample_dict[sel_b]
             res_b = analyze_image_with_gradcam(path_b)
+            
+        c_v1, c_v2 = st.columns(2, gap="large")
+        with c_v1:
+            st.image(res_a["original_image"], caption=f"Foto A: {res_a['predicted_label']}", use_container_width=True)
+        with c_v2:
             st.image(res_b["original_image"], caption=f"Foto B: {res_b['predicted_label']}", use_container_width=True)
 
         bio_a = res_a["biometrics"]
