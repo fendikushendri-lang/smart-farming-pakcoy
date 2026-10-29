@@ -140,10 +140,47 @@ def render_image_analysis():
 
         # ----------------- RIGHT COLUMN: HASIL EKSTRAKSI BIOMETRIK -----------------
         with col_bio:
+            leaf_w_val = bio.get('leaf_width_cm', 10.5)
+            is_ready = leaf_w_val >= 10.0
+            badge_color = "#059669" if is_ready else ("#d97706" if leaf_w_val >= 6.0 else "#0284c7")
+            badge_bg = "#ecfdf5" if is_ready else ("#fffbeb" if leaf_w_val >= 6.0 else "#eff6ff")
+            badge_border = "#a7f3d0" if is_ready else ("#fde68a" if leaf_w_val >= 6.0 else "#bfdbfe")
+            status_text = "SIAP PANEN (MATANG OPTIMAL)" if is_ready else ("MENDEKATI PANEN (PRA-PANEN)" if leaf_w_val >= 6.0 else "MASA PERTUMBUHAN (BELUM SIAP PANEN)")
+            progress_pct = min(round((leaf_w_val / 10.0) * 100.0, 1), 100.0)
+
+            # Dedicated Leaf-Width Harvest Determination Card
+            st.html(f"""
+            <div style="background: {badge_bg}; border: 1.5px solid {badge_border}; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.76rem; font-weight: 800; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.05em;">
+                        🍃 PENENTUAN MASA PANEN BERDASARKAN LEBAR DAUN (CNN)
+                    </span>
+                    <span style="background: {badge_color}; color: #ffffff; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;">
+                        {status_text}
+                    </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px;">
+                    <div>
+                        <span style="font-size: 1.9rem; font-weight: 800; color: #0f172a;">{leaf_w_val} cm</span>
+                        <span style="font-size: 0.82rem; color: #64748b; margin-left: 6px;">(Standar Panen: ≥ 10.0 cm)</span>
+                    </div>
+                    <div style="font-size: 0.85rem; font-weight: 700; color: {badge_color};">
+                        {bio.get('estimasi_sisa_hari', 'Siap Panen')}
+                    </div>
+                </div>
+                <div style="background: #e2e8f0; border-radius: 9999px; height: 8px; overflow: hidden; margin: 8px 0 6px 0;">
+                    <div style="background: {badge_color}; width: {progress_pct}%; height: 100%; border-radius: 9999px;"></div>
+                </div>
+                <p style="font-size: 0.8rem; color: #475569; margin: 4px 0 0 0; line-height: 1.4;">
+                    💡 <strong>Kaidah Fisiologis:</strong> {bio.get('rekomendasi_panen', 'Pakcoy dipanen saat daun mangkok mencapai lebar standar 10-12 cm.')}
+                </p>
+            </div>
+            """)
+
             bio_html = f"""
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     <h3 style="color: #0f172a; font-size: 1.15rem; font-weight: 700; margin: 0 0 12px 0;">
-        Hasil Ekstraksi Biometrik
+        Hasil Ekstraksi Biometrik Lengkap
     </h3>
 
     <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 2px 8px -2px rgba(0,0,0,0.04); display: flex; justify-content: space-between; align-items: center;">
@@ -196,8 +233,8 @@ def render_image_analysis():
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="m15 5 4 4"/><path d="M13 3 4 12v5h5l9-9-5-5Z"/></svg>
                 <span>ESTIMASI LEBAR</span>
             </div>
-            <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin-top: 5px;">
-                {bio['estimasi_lebar']}
+            <div style="font-size: 1.05rem; font-weight: 800; color: #047857; margin-top: 5px;">
+                {bio.get('lebar_desc', bio['estimasi_lebar'])}
             </div>
         </div>
 
