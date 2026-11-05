@@ -8,8 +8,11 @@ from services.data_service import get_all_plants, get_latest_observation, get_gr
 try:
     from data.forecast_b64 import get_forecast_image_for_dap
 except Exception:
-    def get_forecast_image_for_dap(dap_val: int, step_idx: int) -> str:
-        return ""
+    try:
+        from forecast_b64 import get_forecast_image_for_dap
+    except Exception:
+        def get_forecast_image_for_dap(dap_val: int, step_idx: int) -> str:
+            return ""
 
 def get_plant_phase_key(dap_val: int) -> str:
     if dap_val <= 16:

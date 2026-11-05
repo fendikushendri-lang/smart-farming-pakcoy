@@ -8,8 +8,11 @@ from services.data_service import get_all_plants, get_latest_observation, get_gr
 try:
     from data.forecast_b64 import get_forecast_image_for_dap
 except Exception:
-    def get_forecast_image_for_dap(dap_val: int, step_idx: int) -> str:
-        return ""
+    try:
+        from forecast_b64 import get_forecast_image_for_dap
+    except Exception:
+        def get_forecast_image_for_dap(dap_val: int, step_idx: int) -> str:
+            return ""
 
 def get_plant_phase_key(dap_val: int) -> str:
     if dap_val <= 16:
@@ -44,7 +47,7 @@ def render_prediction(selected_plant_id: str):
     daily_sum = forecast_result["daily_summary_df"]
     det_df = forecast_result["detailed_forecast_df"]
     
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     local_img_dir = os.path.join(BASE_DIR, "data", "forecast_images")
 
     # --- 1. HEADER SECTION MATCHING USER SCREENSHOT ---

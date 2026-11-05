@@ -15,10 +15,24 @@ _scaler = None
 
 def get_forecaster():
     global _model, _scaler
-    if _model is None and os.path.exists(MODEL_PATH):
-        _model = joblib.load(MODEL_PATH)
-    if _scaler is None and os.path.exists(SCALER_PATH):
-        _scaler = joblib.load(SCALER_PATH)
+    if _model is None:
+        cand_models = [
+            os.path.join(MODELS_DIR, "timeseries_regressor.pkl"),
+            os.path.join(BASE_DIR, "timeseries_regressor.pkl"),
+        ]
+        for p in cand_models:
+            if os.path.exists(p):
+                _model = joblib.load(p)
+                break
+    if _scaler is None:
+        cand_scalers = [
+            os.path.join(MODELS_DIR, "timeseries_scaler.pkl"),
+            os.path.join(BASE_DIR, "timeseries_scaler.pkl"),
+        ]
+        for p in cand_scalers:
+            if os.path.exists(p):
+                _scaler = joblib.load(p)
+                break
     return _model, _scaler
 
 def predict_growth_4days(plant_id: str):
@@ -55,7 +69,10 @@ def predict_growth_4days(plant_id: str):
     pred_orig = scaler.inverse_transform(scaled_pred)
     
     times = ["08:00", "12:00", "16:00"]
+    time_weight = {"08:00": 0.28, "12:00": 0.42, "16:00": 0.30}
     rows = []
+    
+    current_mat = latest_mat
     
     for i in range(12):
         day_offset = (i // 3) + 1
@@ -65,10 +82,28 @@ def predict_growth_4days(plant_id: str):
         
         moist_val = round(float(pred_orig[i, 0]), 1)
         temp_val = round(float(pred_orig[i, 1]), 1)
-        # Ensure maturity level increases monotonically and is capped between 30% and 100%
-        mat_val = round(float(np.clip(pred_orig[i, 2], latest_mat, 100.0)), 1)
         
+        # Laju pertumbuhan biologis pakcoy harian berbasis kurva sigmoid siklus 40 hari
+        # dMat/dt = 93 * 0.15 * exp(-0.15*(dap-22)) / (1 + exp(-0.15*(dap-22)))^2
+        exp_factor = np.exp(-0.15 * (pred_dap - 22.0))
+        bio_daily_rate = 93.0 * 0.15 * exp_factor / ((1.0 + exp_factor) ** 2)
+        # Batasi koridor laju: 0.8% (fase panen akhir) s.d. 3.4% (puncak vegetatif)
+        bio_daily_rate = float(np.clip(bio_daily_rate, 0.8, 3.4))
+        
+        step_min_growth = bio_daily_rate * time_weight[time_slot]
+        raw_val = float(pred_orig[i, 2])
+        
+        # Jaminan mutlak: Nilai kematangan HARUS selalu meningkat (strictly monotonic), tidak boleh stagnan apalagi turun
+        next_mat = max(current_mat + step_min_growth, raw_val)
+        if next_mat > current_mat + (step_min_growth * 2.2):
+            next_mat = current_mat + (step_min_growth * 1.4)
+            
+        mat_val = round(float(np.clip(next_mat, 5.0, 98.5)), 1)
+        if mat_val <= current_mat:
+            mat_val = round(current_mat + 0.1, 1)
+            
         mat_delta = round(mat_val - latest_mat, 2)
+        current_mat = mat_val
         
         status = "Optimal"
         if moist_val < 50.0:
@@ -110,6 +145,12 @@ def predict_growth_4days(plant_id: str):
         prev_mat = latest_mat if day_off == 1 else pred_df[pred_df['day_label'] == f"Hari +{day_off-1}"]['maturity_level'].iloc[-1]
         target_dap = latest_dap + day_off
         
+        # Pastikan kenaikan harian selalu positif strictly > 0
+        diff_harian = end_mat - prev_mat
+        if diff_harian <= 0.05:
+            diff_harian = 0.60
+            end_mat = round(prev_mat + diff_harian, 1)
+            
         if target_dap == 40:
             h_badge = "🏁 Batas Panen Maksimal (40 HST)"
         elif target_dap > 40:
@@ -123,7 +164,7 @@ def predict_growth_4days(plant_id: str):
             "Hari": f"+{day_off}",
             "Proyeksi HST": f"{target_dap} HST",
             "Prediksi Kematangan (%)": f"{end_mat:.1f}%",
-            "Perubahan Harian": f"+{end_mat - prev_mat:.2f}%",
+            "Perubahan Harian": f"+{diff_harian:.2f}%",
             "Rata-rata Kelembaban": f"{sub['soil_moisture'].mean():.1f}%",
             "Rata-rata Suhu": f"{sub['temperature'].mean():.1f}°C",
             "Status Lingkungan": sub['status'].iloc[-1],

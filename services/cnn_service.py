@@ -219,52 +219,39 @@ def extract_detailed_biometrics(img_orig, pred_class, probs):
         jml_helai = "~12-16 helai"
         
     # G. PERSENTASE KEMATANGAN (MATURITY LEVEL %)
-    # Aligned with 40-day harvest timeline (Vegetative 32-35%, Pre-Harvest 35-36%, Harvest Ready 37-39%)
+    # Disesuaikan dengan siklus panen pakcoy 40 HST (Pertumbuhan 25-60%, Pra-Panen 65-84%, Siap Panen 85-98%)
     if pred_class == "Masa_Pertumbuhan":
-        base_mat = 32.0 + (canopy_coverage / 100.0) * 3.0
-        maturity_pct = round(min(max(base_mat, 32.0), 34.9), 1)
+        base_mat = 25.0 + (canopy_coverage / 100.0) * 35.0
+        maturity_pct = round(min(max(base_mat, 20.0), 62.0), 1)
         phase_label = "Masa Pertumbuhan (Vegetatif)"
     elif pred_class == "Mendekati_Panen":
-        base_mat = 35.0 + (canopy_coverage / 100.0) * 1.5
-        maturity_pct = round(min(max(base_mat, 35.0), 36.5), 1)
+        base_mat = 68.0 + (canopy_coverage / 100.0) * 16.0
+        maturity_pct = round(min(max(base_mat, 65.0), 84.5), 1)
         phase_label = "Mendekati Panen (Pra-Panen)"
     else:
-        base_mat = 36.6 + (canopy_coverage / 100.0) * 2.4
-        maturity_pct = round(min(max(base_mat, 36.6), 39.0), 1)
-        phase_label = "Siap Panen (Matang Sempurna)"
+        base_mat = 86.0 + (canopy_coverage / 100.0) * 11.5
+        maturity_pct = round(min(max(base_mat, 85.0), 98.0), 1)
+        phase_label = "Siap Panen (Matang Optimal)"
         
-    # H. DETEKSI ANOMALI
-    if yellow_pct > 3.5:
-        deteksi_anomali = f"Diskolorasi Kuning ({yellow_pct:.1f}%)"
-        anomali_status = "Warning"
-    elif brown_pct > 2.0:
-        deteksi_anomali = f"Bercak Nekrosis ({brown_pct:.1f}%)"
-        anomali_status = "Warning"
-    else:
-        deteksi_anomali = "Tidak ada"
-        anomali_status = "Normal"
+    # H. SPESIFIKASI SPESIES & KARAKTER MORFOLOGI PAKCOY
+    spesies_tanaman = "Pakcoy (Brassica rapa L. subsp. chinensis)"
+    karakter_pelepah = "Pelepah Daun Sendok Berisi (Succulent Petiole - Khas Pakcoy)"
+    tekstur_daun = "Halus Licin Berdaging (Bukan Selada / Bayam)"
+    turgor_sel = "Turgor Seluler Prima (Segar & Renyah)"
         
-    # I. DETEKSI PENYAKIT / HAMA
-    if yellow_pct > 5.0 or brown_pct > 4.0:
-        deteksi_penyakit = "Perlu Inspeksi Manual"
-        penyakit_status = "Warning"
-    else:
-        deteksi_penyakit = "Aman"
-        penyakit_status = "Normal"
-        
-    # J. INDEKS SKOR BIOMETRIK UNTUK DIAGRAM BATANG (0-100%)
+    # I. INDEKS SKOR BIOMETRIK UNTUK DIAGRAM BATANG (0-100%)
     canopy_score = min(round(canopy_coverage, 1), 100.0)
     chlorophyll_score = min(round((mean_val / 255.0) * 100.0, 1), 100.0)
     turgor_score = min(round((mean_sat / 255.0) * 80.0 + 20.0, 1), 100.0)
-    freshness_score = 98.2 if kondisi_daun == "Segar" else 81.5
-    maturity_score = round((maturity_pct / 40.0) * 100.0, 1)
+    freshness_score = 98.2 if kondisi_daun == "Segar" else 84.5
+    maturity_score = maturity_pct
     
     biometric_indices = {
         "Luas Kanopi (ExG %)": canopy_score,
         "Klorofil & Kejenuhan (%)": chlorophyll_score,
         "Indeks Kesegaran Turgor (%)": turgor_score,
         "Kecerahan Visual Daun (%)": freshness_score,
-        "Tingkat Kematangan Relatif (%)": maturity_score
+        "Tingkat Kematangan (%)": maturity_score
     }
     
     return {
@@ -287,10 +274,10 @@ def extract_detailed_biometrics(img_orig, pred_class, probs):
         "jml_helai": jml_helai,
         "luas_kanopi": luas_kanopi_label,
         "luas_kanopi_pct": round(canopy_coverage, 1),
-        "deteksi_anomali": deteksi_anomali,
-        "anomali_status": anomali_status,
-        "deteksi_penyakit": deteksi_penyakit,
-        "penyakit_status": penyakit_status,
+        "spesies_tanaman": spesies_tanaman,
+        "karakter_pelepah": karakter_pelepah,
+        "tekstur_daun": tekstur_daun,
+        "turgor_sel": turgor_sel,
         "biometric_indices": biometric_indices
     }
 

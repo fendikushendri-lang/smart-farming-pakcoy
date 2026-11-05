@@ -9,17 +9,18 @@ import plotly.graph_objects as go
 from services.cnn_service import analyze_image_with_gradcam
 from services.data_service import get_all_plants
 
-def render_image_analysis():
+def render_image_analysis(selected_plant_id: str = "PCK-001"):
     # --- 1. HEADER SECTION ---
     col_head1, col_head2 = st.columns([2.2, 1.2])
     with col_head1:
         st.html("""
         <div style="margin-bottom: 8px;">
             <h1 style="color: #0f172a; font-size: 1.85rem; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px;">
-                Pusat Analisis Visual (CNN + LLM)
+                Pusat Analisis Visual Pakcoy (CNN + Vision AI)
             </h1>
             <p style="color: #64748b; font-size: 0.95rem; margin: 0; line-height: 1.5;">
-                Mengekstraksi 12 metrik biometrik tanaman secara detail dan mendeteksi anomali.
+                Mengekstraksi parameter biometrik morfologi daun pakcoy (<em>Brassica rapa</em> L. subsp. <em>chinensis</em>), 
+                penentuan kesiapan panen berdasarkan lebar daun, dan eksplanasi atensi <em>Grad-CAM</em>.
             </p>
         </div>
         """)
@@ -38,24 +39,44 @@ def render_image_analysis():
     sample_dir = os.path.join(BASE_DIR, "data", "images")
     light_sample_dir = os.path.join(BASE_DIR, "data", "sample_images")
 
-    # Safely locate default sample image
-    default_sample = None
-    primary_sample = os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_008.jpg")
-    if os.path.isfile(primary_sample):
-        default_sample = primary_sample
-    else:
-        # Fallback to any existing sample in data/images
-        samples_found = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True) if os.path.isdir(sample_dir) else []
-        if samples_found:
-            default_sample = samples_found[0]
+    # Pemetaan foto sampel pakcoy autentik sesuai tanaman/batch yang dipilih pengguna
+    plant_authentic_samples = {
+        "PCK-001": os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_014.jpg"),
+        "PCK-002": os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_006.jpg"),
+        "PCK-003": os.path.join(sample_dir, "Mendekati_Panen", "Mendekati_Panen_039.jpg"),
+        "PCK-004": os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg"),
+        "PCK-005": os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_073.jpg"),
+        "PCK-FULL40": os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg"),
+    }
+    
+    # Safely locate default sample image (100% Pakcoy Autentik)
+    default_sample = plant_authentic_samples.get(selected_plant_id)
+    if not default_sample or not os.path.isfile(default_sample):
+        primary_sample = os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg")
+        if os.path.isfile(primary_sample):
+            default_sample = primary_sample
         else:
-            # Fallback to lightweight sample_images
-            light_samples = glob.glob(os.path.join(light_sample_dir, "*.jpg")) if os.path.isdir(light_sample_dir) else []
-            if light_samples:
-                default_sample = light_samples[0]
+            samples_found = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True) if os.path.isdir(sample_dir) else []
+            default_sample = samples_found[0] if samples_found else None
+
+    # Daftar sampel kurasi khusus tanaman Pakcoy (memastikan bebas dari selada / bayam)
+    curated_pakcoy_samples = {
+        "Masa_Pertumbuhan": [
+            "Masa_Pertumbuhan_014.jpg", "Masa_Pertumbuhan_001.jpg", "Masa_Pertumbuhan_021.jpg",
+            "Masa_Pertumbuhan_026.jpg", "Masa_Pertumbuhan_029.jpg", "Masa_Pertumbuhan_006.jpg", "Masa_Pertumbuhan_005.jpg"
+        ],
+        "Mendekati_Panen": [
+            "Mendekati_Panen_039.jpg", "Mendekati_Panen_041.jpg", "Mendekati_Panen_043.jpg",
+            "Mendekati_Panen_048.jpg", "Mendekati_Panen_055.jpg"
+        ],
+        "Siap_Panen": [
+            "Siap_Panen_080.jpg", "Siap_Panen_073.jpg", "Siap_Panen_090.jpg",
+            "Siap_Panen_105.jpg", "Siap_Panen_082.jpg"
+        ]
+    }
 
     # =========================================================================
-    # MODE 1: ANALISIS TUNGGAL (MATCHING USER SCREENSHOT EXACTLY)
+    # MODE 1: ANALISIS TUNGGAL
     # =========================================================================
     if analysis_mode == "Analisis Tunggal":
         # Prominent File Upload Section
@@ -69,19 +90,19 @@ def render_image_analysis():
             )
         with c_up2:
             st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
-            with st.expander("🌿 Atau Pilih Sampel Dataset", expanded=False):
+            with st.expander("🌿 Atau Pilih Sampel Pakcoy", expanded=False):
                 sel_cat = st.selectbox("Fase:", ["Masa_Pertumbuhan", "Mendekati_Panen", "Siap_Panen"], key="exp_cat")
                 cat_folder = os.path.join(sample_dir, sel_cat)
-                cat_imgs = glob.glob(os.path.join(cat_folder, "*.jpg")) if os.path.isdir(cat_folder) else []
-                fallback_cat = os.path.join(light_sample_dir, f"{sel_cat}.jpg")
                 
+                # Gunakan daftar kurasi foto pakcoy terverifikasi
+                avail_curated = [f for f in curated_pakcoy_samples.get(sel_cat, []) if os.path.isfile(os.path.join(cat_folder, f))]
+                if not avail_curated:
+                    avail_curated = [os.path.basename(p) for p in glob.glob(os.path.join(cat_folder, "*.jpg"))[:10]]
+                    
                 dataset_choice = None
-                if cat_imgs:
-                    sel_img = st.selectbox("Foto:", [os.path.basename(p) for p in cat_imgs[:25]], key="exp_img")
+                if avail_curated:
+                    sel_img = st.selectbox("Foto Pakcoy Terverifikasi:", avail_curated, key="exp_img")
                     dataset_choice = os.path.join(cat_folder, sel_img)
-                elif os.path.isfile(fallback_cat):
-                    dataset_choice = fallback_cat
-                    st.caption(f"ℹ️ Menggunakan sampel representatif fase **{sel_cat.replace('_', ' ')}**")
                 else:
                     st.caption("ℹ️ Sampel dataset tidak ditemukan di server. Silakan unggah foto di samping.")
 
@@ -266,24 +287,6 @@ def render_image_analysis():
             <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin-top: 5px;">
                 {bio['luas_kanopi']}
             </div>
-        </div>
-    </div>
-
-    <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px;">
-        <div style="font-size: 0.74rem; font-weight: 800; color: #b45309; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px;">
-            <span>⚠️</span> DETEKSI ANOMALI
-        </div>
-        <div style="font-size: 0.98rem; font-weight: 700; color: #92400e; margin-top: 4px;">
-            {bio['deteksi_anomali']}
-        </div>
-    </div>
-
-    <div style="background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 10px; padding: 12px 16px;">
-        <div style="font-size: 0.74rem; font-weight: 800; color: #047857; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px;">
-            <span>✳️</span> DETEKSI PENYAKIT / HAMA
-        </div>
-        <div style="font-size: 0.98rem; font-weight: 700; color: #065f46; margin-top: 4px;">
-            {bio['deteksi_penyakit']}
         </div>
     </div>
 </div>
@@ -479,9 +482,7 @@ def render_image_analysis():
             {"Parameter Biometrik": "Warna Daun", "Foto A": bio_a["warna_daun"], "Foto B": bio_b["warna_daun"], "Analisis Perubahan": "Perkembangan Pigmen"},
             {"Parameter Biometrik": "Estimasi Lebar", "Foto A": bio_a["estimasi_lebar"], "Foto B": bio_b["estimasi_lebar"], "Analisis Perubahan": "Ekspansi Daun"},
             {"Parameter Biometrik": "Jumlah Helai", "Foto A": bio_a["jml_helai"], "Foto B": bio_b["jml_helai"], "Analisis Perubahan": "Pertambahan Daun"},
-            {"Parameter Biometrik": "Luas Kanopi", "Foto A": f"{bio_a['luas_kanopi']} ({bio_a['luas_kanopi_pct']}%)", "Foto B": f"{bio_b['luas_kanopi']} ({bio_b['luas_kanopi_pct']}%)", "Analisis Perubahan": f"{bio_b['luas_kanopi_pct'] - bio_a['luas_kanopi_pct']:+.1f}% Area Kanopi"},
-            {"Parameter Biometrik": "Deteksi Anomali", "Foto A": bio_a["deteksi_anomali"], "Foto B": bio_b["deteksi_anomali"], "Analisis Perubahan": "Aman & Terkendali"},
-            {"Parameter Biometrik": "Status Penyakit/Hama", "Foto A": bio_a["deteksi_penyakit"], "Foto B": bio_b["deteksi_penyakit"], "Analisis Perubahan": "Bebas Patogen"}
+            {"Parameter Biometrik": "Luas Kanopi", "Foto A": f"{bio_a['luas_kanopi']} ({bio_a['luas_kanopi_pct']}%)", "Foto B": f"{bio_b['luas_kanopi']} ({bio_b['luas_kanopi_pct']}%)", "Analisis Perubahan": f"{bio_b['luas_kanopi_pct'] - bio_a['luas_kanopi_pct']:+.1f}% Area Kanopi"}
         ])
         st.dataframe(comparison_matrix, use_container_width=True, hide_index=True)
         

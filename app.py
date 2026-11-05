@@ -21,9 +21,13 @@ import web.views.history_view
 import web.views.ai_assistant
 import web.views.settings
 import ai.gemini_service
+import services.lstm_service
+import services.cnn_service
 
-# Ensure views and sensor panels are always loaded fresh from disk
+# Ensure views, services, and sensor panels are always loaded fresh from disk
 importlib.reload(ai.gemini_service)
+importlib.reload(services.lstm_service)
+importlib.reload(services.cnn_service)
 importlib.reload(web.sensor_panels)
 importlib.reload(web.views.dashboard)
 importlib.reload(web.views.image_analysis)
@@ -172,7 +176,7 @@ if menu == "📊 Dashboard Utama":
 elif menu == "📈 Prediksi 4 Hari (LSTM)":
     render_prediction(st.session_state["selected_plant_id"])
 elif menu == "📷 Analisis Tanaman (CNN)":
-    render_image_analysis()
+    render_image_analysis(st.session_state.get("selected_plant_id", "PCK-001"))
 elif menu == "📜 Histori":
     render_history()
 elif menu == "🤖 AI Pakcoy Assistant":
