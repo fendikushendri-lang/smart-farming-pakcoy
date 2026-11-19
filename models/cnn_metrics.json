@@ -5,8 +5,8 @@
     "Mendekati_Panen",
     "Siap_Panen"
   ],
-  "cv_accuracy": 0.9,
-  "cv_std": 0.0333,
+  "cv_accuracy": 0.9083,
+  "cv_std": 0.0486,
   "train_accuracy": 1.0,
   "total_samples": 120
 }

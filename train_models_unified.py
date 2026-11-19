@@ -15,16 +15,28 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-def extract_visual_features(img_path):
-    """Ekstraksi fitur visual komprehensif: RGB/HSV moments, kanopi ExG/ExR, foliage-specific stats, dan histogram."""
-    img = Image.open(img_path).convert('RGB').resize((128, 128))
+from scipy.ndimage import label, binary_opening, sobel
+
+def extract_visual_features(img_input):
+    """
+    Ekstraksi fitur visual komprehensif botani pakcoy:
+    1. Warna & Spektrum: RGB/HSV moments, ExG/ExR, foliage-specific stats, dan histogram.
+    2. Morfologi Daun: jumlah helai blob, dominansi helai utama, rasio aspek daun.
+    3. Pelepah & Tekstur: rasio pelepah putih tebal pakcoy dewasa, kerapatan gradien Sobel.
+    """
+    if isinstance(img_input, str):
+        img = Image.open(img_input).convert('RGB').resize((128, 128))
+    else:
+        img = img_input.convert('RGB').resize((128, 128))
+        
     arr = np.array(img, dtype=np.float32) / 255.0
     hsv = np.array(img.convert('HSV'), dtype=np.float32) / 255.0
     
     exg = 2.0 * arr[:, :, 1] - arr[:, :, 0] - arr[:, :, 2]
     exr = 1.4 * arr[:, :, 0] - arr[:, :, 1]
-    canopy_mask = exg > 0.05
+    canopy_mask = exg > 0.06
     canopy_cov = float(np.mean(canopy_mask))
+    total_green = np.sum(canopy_mask)
     
     mean_rgb = arr.mean(axis=(0, 1))
     std_rgb = arr.std(axis=(0, 1))
@@ -42,11 +54,40 @@ def extract_visual_features(img_path):
     hist_h, _ = np.histogram(hsv[:, :, 0], bins=10, range=(0, 1), density=True)
     hist_exg, _ = np.histogram(exg, bins=10, range=(-1, 2), density=True)
     
+    # 2. Fitur Morfologi & Struktur Kontur (Mencegah salah baca kecil jadi besar)
+    opened = binary_opening(canopy_mask, structure=np.ones((3, 3)))
+    labeled, num_blobs = label(opened)
+    
+    max_w, max_h, max_area = 0, 0, 0
+    for b in range(1, num_blobs + 1):
+        coords = np.argwhere(labeled == b)
+        area = len(coords)
+        if area > max_area:
+            max_area = area
+            min_y, min_x = coords.min(axis=0)
+            max_y, max_x = coords.max(axis=0)
+            max_w = max_x - min_x + 1
+            max_h = max_y - min_y + 1
+            
+    dominance = float(max_area / max(total_green, 1))
+    aspect_ratio = float(max(max_w, max_h) / max(min(max_w, max_h), 1))
+    blade_w_ratio = float(max_w / 128.0)
+    norm_blobs = float(min(num_blobs / 25.0, 1.0))
+    
+    # 3. Pelepah Putih Sukulen (Khas Pakcoy Siap Panen)
+    white_petiole = (arr[:, :, 0] > 0.45) & (arr[:, :, 1] > 0.50) & (arr[:, :, 2] > 0.35) & (hsv[:, :, 1] < 0.40) & (exg < 0.20)
+    petiole_pct = float(np.mean(white_petiole))
+    
+    # 4. Kerapatan Tekstur Gradien (Daun tua lebar halus vs bibit bertepi tajam banyak tangkai)
+    grad_g = np.hypot(sobel(arr[:, :, 1], axis=0), sobel(arr[:, :, 1], axis=1))
+    tex_density = float(grad_g[canopy_mask].mean() if np.any(canopy_mask) else 0.0)
+    
     features = np.concatenate([
         mean_rgb, std_rgb, mean_hsv, std_hsv,
         [canopy_cov, float(exg.mean()), float(exg.std()), float(exr.mean())],
         foliage_rgb, foliage_hsv,
-        hist_g, hist_h, hist_exg
+        hist_g, hist_h, hist_exg,
+        [norm_blobs, dominance, aspect_ratio, blade_w_ratio, petiole_pct, tex_density]
     ])
     return features
 
