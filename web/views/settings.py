@@ -61,6 +61,16 @@ def render_settings():
                 st.session_state["active_ai_provider"] = "gemini"
                 os.environ["GEMINI_API_KEY"] = gemini_key_input.strip()
                 os.environ["GOOGLE_API_KEY"] = gemini_key_input.strip()
+                try:
+                    from services.data_service import add_activity_log
+                    add_activity_log(
+                        "Pengaturan",
+                        "Update Konfigurasi API Gemini",
+                        "Berhasil",
+                        {"model": gemini_model_choice, "layanan": "Google AI Studio", "status": "Tersimpan Aktif"}
+                    )
+                except Exception:
+                    pass
                 st.success(f"✅ Konfigurasi Google AI Studio ({gemini_model_choice}) berhasil disimpan!")
         with c_btn2:
             if st.button("🔌 Uji Koneksi API", use_container_width=True):

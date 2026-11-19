@@ -89,3 +89,27 @@ def add_observation_record(plant_id, day, dap, time, soil_moisture, temperature,
     conn.commit()
     conn.close()
     return True
+
+def get_activity_logs(filter_type: str = "Semua"):
+    conn = get_connection()
+    if filter_type == "Semua" or not filter_type:
+        query = "SELECT * FROM activity_logs ORDER BY id DESC"
+        df = pd.read_sql_query(query, conn)
+    else:
+        query = "SELECT * FROM activity_logs WHERE jenis = ? ORDER BY id DESC"
+        df = pd.read_sql_query(query, conn, params=(filter_type,))
+    conn.close()
+    return df
+
+def add_activity_log(jenis: str, proses: str, status: str = "Berhasil", detail: dict = None):
+    from datetime import datetime
+    waktu_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO activity_logs (waktu, jenis, proses, status, detail_json)
+    VALUES (?, ?, ?, ?, ?)
+    """, (waktu_str, jenis, proses, status, json.dumps(detail or {})))
+    conn.commit()
+    conn.close()
+    return True
