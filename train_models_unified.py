@@ -174,6 +174,181 @@ def train_visual_classifier():
         json.dump(metrics, f, indent=2)
     print("Enhanced vision model saved successfully.")
 
+def extract_species_features(img_input):
+    """
+    Ekstraksi 61 fitur botani pembeda spesies:
+    58 fitur spektral morfologi + 3 diskriminator khusus (antosianin merah, rasio hijau limau selada, kerapatan lekuk gerigi).
+    """
+    if isinstance(img_input, str):
+        img = Image.open(img_input).convert('RGB').resize((128, 128))
+    else:
+        img = img_input.convert('RGB').resize((128, 128))
+        
+    arr = np.array(img, dtype=np.float32) / 255.0
+    hsv = np.array(img.convert('HSV'), dtype=np.float32) / 255.0
+    
+    exg = 2.0 * arr[:, :, 1] - arr[:, :, 0] - arr[:, :, 2]
+    exr = 1.4 * arr[:, :, 0] - arr[:, :, 1]
+    canopy_mask = exg > 0.06
+    canopy_cov = float(np.mean(canopy_mask))
+    total_green = np.sum(canopy_mask)
+    
+    mean_rgb = arr.mean(axis=(0, 1))
+    std_rgb = arr.std(axis=(0, 1))
+    mean_hsv = hsv.mean(axis=(0, 1))
+    std_hsv = hsv.std(axis=(0, 1))
+    
+    if np.any(canopy_mask):
+        foliage_rgb = arr[canopy_mask].mean(axis=0)
+        foliage_hsv = hsv[canopy_mask].mean(axis=0)
+    else:
+        foliage_rgb = mean_rgb
+        foliage_hsv = mean_hsv
+        
+    hist_g, _ = np.histogram(arr[:, :, 1], bins=10, range=(0, 1), density=True)
+    hist_h, _ = np.histogram(hsv[:, :, 0], bins=10, range=(0, 1), density=True)
+    hist_exg, _ = np.histogram(exg, bins=10, range=(-1, 2), density=True)
+    
+    # Morfologi & Kontur
+    opened = binary_opening(canopy_mask, structure=np.ones((3, 3)))
+    labeled, num_blobs = label(opened)
+    
+    max_w, max_h, max_area = 0, 0, 0
+    for b in range(1, num_blobs + 1):
+        coords = np.argwhere(labeled == b)
+        area = len(coords)
+        if area > max_area:
+            max_area = area
+            min_y, min_x = coords.min(axis=0)
+            max_y, max_x = coords.max(axis=0)
+            max_w = max_x - min_x + 1
+            max_h = max_y - min_y + 1
+            
+    dominance = float(max_area / max(total_green, 1))
+    aspect_ratio = float(max(max_w, max_h) / max(min(max_w, max_h), 1))
+    blade_w_ratio = float(max_w / 128.0)
+    norm_blobs = float(min(num_blobs / 25.0, 1.0))
+    
+    # Pelepah Putih Sukulen (Khas Pakcoy)
+    white_petiole = (arr[:, :, 0] > 0.45) & (arr[:, :, 1] > 0.50) & (arr[:, :, 2] > 0.35) & (hsv[:, :, 1] < 0.40) & (exg < 0.20)
+    petiole_pct = float(np.mean(white_petiole))
+    
+    # Kerapatan Tekstur Gradien (Daun halus vs keriting/bergerigi)
+    grad_g = np.hypot(sobel(arr[:, :, 1], axis=0), sobel(arr[:, :, 1], axis=1))
+    tex_density = float(grad_g[canopy_mask].mean() if np.any(canopy_mask) else 0.0)
+    
+    # Fitur Spesies Spesifik:
+    # 1. Antosianin merah (khas bayam merah)
+    red_mask = (arr[:, :, 0] > arr[:, :, 1] * 1.1) & (arr[:, :, 0] > 0.25)
+    red_antho = float(np.mean(red_mask))
+    
+    # 2. Lime green ratio (khas selada: R tinggi, G tinggi, B rendah)
+    lime_mask = (arr[:, :, 1] > 0.50) & (arr[:, :, 0] > 0.40) & (arr[:, :, 2] < 0.35)
+    lime_ratio = float(np.mean(lime_mask))
+    
+    # 3. Frilling / edge roughness (khas selada keriting dan seledri bergerigi)
+    frill_edges = (grad_g > 0.12) & canopy_mask
+    frill_density = float(np.sum(frill_edges) / max(total_green, 1))
+    
+    features = np.concatenate([
+        mean_rgb, std_rgb, mean_hsv, std_hsv,
+        [canopy_cov, float(exg.mean()), float(exg.std()), float(exr.mean())],
+        foliage_rgb, foliage_hsv,
+        hist_g, hist_h, hist_exg,
+        [norm_blobs, dominance, aspect_ratio, blade_w_ratio, petiole_pct, tex_density],
+        [red_antho, lime_ratio, frill_density]
+    ])
+    return features
+
+def train_species_classifier():
+    print("\n=== TRAINING SPECIES DISCRIMINATOR (PAKCOY VS SELADA VS BAYAM VS SELEDRI VS LAINNYA) ===")
+    import glob
+    from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, VotingClassifier
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.model_selection import StratifiedKFold, cross_val_score
+    
+    species_names = ["Pakcoy", "Selada", "Bayam", "Seledri", "Daun_Lainnya"]
+    species_mapping = {
+        "Selada": 1,
+        "Bayam": 2,
+        "Seledri": 3,
+        "Daun_Lainnya": 4
+    }
+    
+    X, y = [], []
+    
+    # 1. Pakcoy samples
+    pakcoy_files = []
+    for c in ["Masa_Pertumbuhan", "Mendekati_Panen", "Siap_Panen"]:
+        folder = os.path.join(IMAGES_DIR, c)
+        if os.path.isdir(folder):
+            pakcoy_files.extend(glob.glob(os.path.join(folder, "*")))
+    pakcoy_files = [f for f in pakcoy_files if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+    print(f"Loading {len(pakcoy_files)} Pakcoy images...")
+    for f in pakcoy_files:
+        try:
+            X.append(extract_species_features(f))
+            y.append(0)
+        except Exception as e:
+            print(f"Error {f}: {e}")
+            
+    # 2. Non-Pakcoy samples
+    for s_name, s_idx in species_mapping.items():
+        s_dir = os.path.join(IMAGES_DIR, "non_pakcoy", s_name)
+        if os.path.exists(s_dir):
+            s_files = [f for f in glob.glob(os.path.join(s_dir, "*")) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+            print(f"Loading {len(s_files)} images for '{s_name}' (label {s_idx})...")
+            for f in s_files:
+                try:
+                    X.append(extract_species_features(f))
+                    y.append(s_idx)
+                except Exception as e:
+                    print(f"Error {f}: {e}")
+                    
+    X = np.array(X, dtype=np.float32)
+    y = np.array(y, dtype=np.int64)
+    print(f"Total Species Dataset: X={X.shape}, y={y.shape}")
+    class_counts = {species_names[i]: int(np.sum(y == i)) for i in range(len(species_names))}
+    print("Class distribution:", class_counts)
+    
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    rf = RandomForestClassifier(n_estimators=100, max_depth=12, random_state=42)
+    et = ExtraTreesClassifier(n_estimators=100, max_depth=12, random_state=42)
+    mlp = MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=400, random_state=42)
+    
+    species_clf = VotingClassifier(
+        estimators=[('rf', rf), ('et', et), ('mlp', mlp)],
+        voting='soft'
+    )
+    
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    scores = cross_val_score(species_clf, X_scaled, y, cv=skf)
+    cv_acc = float(scores.mean())
+    cv_std = float(scores.std())
+    print(f"Species Classifier 5-Fold CV Accuracy: {cv_acc*100:.2f}% (+/- {cv_std*100:.2f}%)")
+    
+    species_clf.fit(X_scaled, y)
+    train_acc = float(species_clf.score(X_scaled, y))
+    print(f"Species Classifier Fit Accuracy: {train_acc*100:.2f}%")
+    
+    joblib.dump(species_clf, os.path.join(MODELS_DIR, "species_classifier.pkl"))
+    joblib.dump(scaler, os.path.join(MODELS_DIR, "species_scaler.pkl"))
+    
+    metrics = {
+        "model_type": "Multi-Species Botanical Classifier (Soft Voting: RF + ExtraTrees + MLP)",
+        "classes": species_names,
+        "class_counts": class_counts,
+        "cv_accuracy": round(cv_acc, 4),
+        "cv_std": round(cv_std, 4),
+        "train_accuracy": round(train_acc, 4),
+        "total_samples": len(y)
+    }
+    with open(os.path.join(MODELS_DIR, "species_metrics.json"), "w") as f:
+        json.dump(metrics, f, indent=2)
+    print("Species classification model saved successfully.")
+
 def train_timeseries_forecaster():
     print("\n=== TRAINING TIME-SERIES MULTIVARIATE FORECASTER (40 DAYS DATA) ===")
     csv_path = os.path.join(DATA_DIR, "processed", "timeseries_clean.csv")
@@ -271,5 +446,6 @@ def train_timeseries_forecaster():
     print("Time-series forecaster retrained and saved successfully on 40-day dataset.")
 
 if __name__ == "__main__":
+    train_species_classifier()
     train_visual_classifier()
     train_timeseries_forecaster()

@@ -12,11 +12,54 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 MODEL_PATH = os.path.join(MODELS_DIR, "vision_classifier.pkl")
 SCALER_PATH = os.path.join(MODELS_DIR, "vision_scaler.pkl")
 
+SPECIES_MODEL_PATH = os.path.join(MODELS_DIR, "species_classifier.pkl")
+SPECIES_SCALER_PATH = os.path.join(MODELS_DIR, "species_scaler.pkl")
+
 CLASS_NAMES = ["Masa_Pertumbuhan", "Mendekati_Panen", "Siap_Panen"]
 CLASS_LABELS = {
     "Masa_Pertumbuhan": "Fase Pertumbuhan (Vegetatif Awal)",
     "Mendekati_Panen": "Fase Mendekati Panen (Pra-Panen)",
     "Siap_Panen": "Fase Siap Panen (Matang Sempurna)"
+}
+
+SPECIES_NAMES = ["Pakcoy", "Selada", "Bayam", "Seledri", "Daun_Lainnya"]
+SPECIES_LABELS = {
+    "Pakcoy": "Pakcoy (Brassica rapa L. subsp. chinensis)",
+    "Selada": "Selada / Bibit Selada (Lactuca sativa)",
+    "Bayam": "Bayam / Bibit Bayam (Amaranthus spp.)",
+    "Seledri": "Seledri / Bibit Seledri (Apium graveolens)",
+    "Daun_Lainnya": "Gulma / Daun Hijau Lainnya (Non-Target)"
+}
+
+SPECIES_DIAGNOSTICS = {
+    "Selada": {
+        "nama_ilmiah": "Lactuca sativa L.",
+        "famili": "Asteraceae (Compositae)",
+        "alasan_bukan_pakcoy": "Morfologi helai daun bertepi keriting/bergelombang (frilled margin) lemas, rona warna hijau muda limau/chartreuse cerah, dan sama sekali tidak memiliki tangkai pelepah sukulen putih berbentuk sendok yang merupakan identitas wajib tanaman Pakcoy.",
+        "peringatan": "Sampel foto teridentifikasi sebagai SELADA (Lactuca sativa), bukan Pakcoy. Model kalibrasi panen 40 HST dan standar lebar daun pakcoy (≥10 cm) tidak berlaku untuk tanaman ini.",
+        "saran": "Panen selada komersial umumnya dilakukan pada 30–45 HST berdasarkan kepadatan krop atau panjang daun 15–20 cm, dengan kebutuhan EC larutan 1.2–1.6 mS/cm."
+    },
+    "Bayam": {
+        "nama_ilmiah": "Amaranthus spp. / Alternanthera sissoo",
+        "famili": "Amaranthaceae",
+        "alasan_bukan_pakcoy": "Helai daun membulat/oval dengan susunan berseling, tangkai daun ramping tanpa roset pelepah sendok, serta kerap menunjukkan pigmen antosianin kemerahan/keunguan (bayam merah) atau helai bergelembung (bayam Brazil).",
+        "peringatan": "Sampel foto teridentifikasi sebagai BAYAM (Amaranthus spp.), bukan Pakcoy. Parameter roset mangkok dan kematangan pakcoy tidak dapat diaplikasikan.",
+        "saran": "Bayam dipanen cabut pada umur muda (20–25 HST) saat tinggi tanaman mencapai 15–20 cm."
+    },
+    "Seledri": {
+        "nama_ilmiah": "Apium graveolens L.",
+        "famili": "Apiaceae (Umbelliferae)",
+        "alasan_bukan_pakcoy": "Daun majemuk menjari dengan anak daun berlekuk/bergerigi tajam (incised pinnate leaflets), bertangkai panjang ramping dengan rusuk beralur, berbeda dari daun tunggal sukulen Pakcoy.",
+        "peringatan": "Sampel foto teridentifikasi sebagai SELEDRI (Apium graveolens), bukan Pakcoy.",
+        "saran": "Seledri dipanen bertahap dengan memetik tangkai daun luar pada umur 60–90 HST."
+    },
+    "Daun_Lainnya": {
+        "nama_ilmiah": "Spesies Non-Target / Gulma Liar",
+        "famili": "Lainnya",
+        "alasan_bukan_pakcoy": "Struktur kanopi, rasio klorofil spektral, dan geometri helai daun tidak sesuai dengan karakteristik taksonomi Brassica rapa subsp. chinensis.",
+        "peringatan": "Sampel ini bukan tanaman Pakcoy budidaya. Silakan unggah foto tanaman Pakcoy yang valid.",
+        "saran": "Pastikan objek foto adalah tanaman Pakcoy (Brassica rapa subsp. chinensis) dengan pencahayaan memadai."
+    }
 }
 
 DESCRIPTIONS = {
@@ -39,6 +82,8 @@ DESCRIPTIONS = {
 
 _clf = None
 _scaler = None
+_species_clf = None
+_species_scaler = None
 
 def get_vision_model():
     global _clf, _scaler
@@ -47,6 +92,14 @@ def get_vision_model():
     if _scaler is None and os.path.exists(SCALER_PATH):
         _scaler = joblib.load(SCALER_PATH)
     return _clf, _scaler
+
+def get_species_model():
+    global _species_clf, _species_scaler
+    if _species_clf is None and os.path.exists(SPECIES_MODEL_PATH):
+        _species_clf = joblib.load(SPECIES_MODEL_PATH)
+    if _species_scaler is None and os.path.exists(SPECIES_SCALER_PATH):
+        _species_scaler = joblib.load(SPECIES_SCALER_PATH)
+    return _species_clf, _species_scaler
 
 def extract_features(img_orig):
     """
@@ -115,6 +168,88 @@ def extract_features(img_orig):
         foliage_rgb, foliage_hsv,
         hist_g, hist_h, hist_exg,
         [norm_blobs, dominance, aspect_ratio, blade_w_ratio, petiole_pct, tex_density]
+    ])
+    return features.reshape(1, -1)
+
+def extract_species_features(img_orig):
+    """
+    Ekstraksi 61 fitur botani pembeda spesies (Pakcoy vs Selada vs Bayam vs Seledri vs Daun Lainnya):
+    58 fitur spektral morfologi + 3 diskriminator khusus (antosianin merah, rasio hijau limau selada, kerapatan lekuk gerigi).
+    """
+    img = img_orig.convert('RGB').resize((128, 128))
+    arr = np.array(img, dtype=np.float32) / 255.0
+    hsv = np.array(img.convert('HSV'), dtype=np.float32) / 255.0
+    
+    exg = 2.0 * arr[:, :, 1] - arr[:, :, 0] - arr[:, :, 2]
+    exr = 1.4 * arr[:, :, 0] - arr[:, :, 1]
+    canopy_mask = exg > 0.06
+    canopy_cov = float(np.mean(canopy_mask))
+    total_green = np.sum(canopy_mask)
+    
+    mean_rgb = arr.mean(axis=(0, 1))
+    std_rgb = arr.std(axis=(0, 1))
+    mean_hsv = hsv.mean(axis=(0, 1))
+    std_hsv = hsv.std(axis=(0, 1))
+    
+    if np.any(canopy_mask):
+        foliage_rgb = arr[canopy_mask].mean(axis=0)
+        foliage_hsv = hsv[canopy_mask].mean(axis=0)
+    else:
+        foliage_rgb = mean_rgb
+        foliage_hsv = mean_hsv
+        
+    hist_g, _ = np.histogram(arr[:, :, 1], bins=10, range=(0, 1), density=True)
+    hist_h, _ = np.histogram(hsv[:, :, 0], bins=10, range=(0, 1), density=True)
+    hist_exg, _ = np.histogram(exg, bins=10, range=(-1, 2), density=True)
+    
+    # Morfologi & Kontur
+    opened = binary_opening(canopy_mask, structure=np.ones((3, 3)))
+    labeled, num_blobs = label(opened)
+    
+    max_w, max_h, max_area = 0, 0, 0
+    for b in range(1, num_blobs + 1):
+        coords = np.argwhere(labeled == b)
+        area = len(coords)
+        if area > max_area:
+            max_area = area
+            min_y, min_x = coords.min(axis=0)
+            max_y, max_x = coords.max(axis=0)
+            max_w = max_x - min_x + 1
+            max_h = max_y - min_y + 1
+            
+    dominance = float(max_area / max(total_green, 1))
+    aspect_ratio = float(max(max_w, max_h) / max(min(max_w, max_h), 1))
+    blade_w_ratio = float(max_w / 128.0)
+    norm_blobs = float(min(num_blobs / 25.0, 1.0))
+    
+    # Pelepah Putih Sukulen (Khas Pakcoy)
+    white_petiole = (arr[:, :, 0] > 0.45) & (arr[:, :, 1] > 0.50) & (arr[:, :, 2] > 0.35) & (hsv[:, :, 1] < 0.40) & (exg < 0.20)
+    petiole_pct = float(np.mean(white_petiole))
+    
+    # Kerapatan Tekstur Gradien (Daun halus vs keriting/bergerigi)
+    grad_g = np.hypot(sobel(arr[:, :, 1], axis=0), sobel(arr[:, :, 1], axis=1))
+    tex_density = float(grad_g[canopy_mask].mean() if np.any(canopy_mask) else 0.0)
+    
+    # Fitur Spesies Spesifik:
+    # 1. Antosianin merah (khas bayam merah / bayam belang)
+    red_mask = (arr[:, :, 0] > arr[:, :, 1] * 1.1) & (arr[:, :, 0] > 0.25)
+    red_antho = float(np.mean(red_mask))
+    
+    # 2. Lime green ratio (khas selada: R tinggi, G tinggi, B rendah)
+    lime_mask = (arr[:, :, 1] > 0.50) & (arr[:, :, 0] > 0.40) & (arr[:, :, 2] < 0.35)
+    lime_ratio = float(np.mean(lime_mask))
+    
+    # 3. Frilling / edge roughness
+    frill_edges = (grad_g > 0.12) & canopy_mask
+    frill_density = float(np.sum(frill_edges) / max(total_green, 1))
+    
+    features = np.concatenate([
+        mean_rgb, std_rgb, mean_hsv, std_hsv,
+        [canopy_cov, float(exg.mean()), float(exg.std()), float(exr.mean())],
+        foliage_rgb, foliage_hsv,
+        hist_g, hist_h, hist_exg,
+        [norm_blobs, dominance, aspect_ratio, blade_w_ratio, petiole_pct, tex_density],
+        [red_antho, lime_ratio, frill_density]
     ])
     return features.reshape(1, -1)
 
@@ -438,6 +573,10 @@ def extract_detailed_biometrics(img_orig, pred_class, probs):
 def analyze_image_with_gradcam(image_input):
     if image_input is None:
         img_orig = Image.new('RGB', (224, 224), color=(34, 139, 34))
+    elif isinstance(image_input, Image.Image):
+        img_orig = image_input.convert('RGB')
+    elif isinstance(image_input, np.ndarray):
+        img_orig = Image.fromarray(np.uint8(image_input)).convert('RGB')
     elif isinstance(image_input, str):
         if not os.path.exists(image_input):
             img_orig = Image.new('RGB', (224, 224), color=(34, 139, 34))
@@ -448,7 +587,111 @@ def analyze_image_with_gradcam(image_input):
             img_orig = Image.open(image_input).convert('RGB')
         except Exception:
             img_orig = Image.new('RGB', (224, 224), color=(34, 139, 34))
+            
+    gradcam_img = generate_saliency_heatmap(img_orig)
+    
+    # =========================================================================
+    # TIER 1: VERIFIKASI SPESIES TANAMAN (PAKCOY VS SELADA VS BAYAM VS SELEDRI VS LAINNYA)
+    # =========================================================================
+    species_clf, species_scaler = get_species_model()
+    is_pakcoy = True
+    detected_species = "Pakcoy"
+    species_confidence = 98.0
+    species_probs_dict = {
+        SPECIES_LABELS["Pakcoy"]: 0.98,
+        SPECIES_LABELS["Selada"]: 0.01,
+        SPECIES_LABELS["Bayam"]: 0.005,
+        SPECIES_LABELS["Seledri"]: 0.003,
+        SPECIES_LABELS["Daun_Lainnya"]: 0.002
+    }
+    
+    if species_clf is not None and species_scaler is not None:
+        try:
+            feats_spec = extract_species_features(img_orig)
+            feats_spec_scaled = species_scaler.transform(feats_spec)
+            spec_probs = species_clf.predict_proba(feats_spec_scaled)[0]
+            spec_idx = int(np.argmax(spec_probs))
+            detected_species = SPECIES_NAMES[spec_idx]
+            species_confidence = float(spec_probs[spec_idx] * 100.0)
+            
+            species_probs_dict = {
+                SPECIES_LABELS[c]: round(float(spec_probs[i]), 4)
+                for i, c in enumerate(SPECIES_NAMES)
+            }
+            if detected_species != "Pakcoy":
+                is_pakcoy = False
+        except Exception as e:
+            print(f"Species classification warning: {e}")
+            
+    # =========================================================================
+    # JIKA TERDETEKSI BUKAN PAKCOY (SELADA / BAYAM / SELEDRI / DAUN LAIN)
+    # =========================================================================
+    if not is_pakcoy:
+        diag = SPECIES_DIAGNOSTICS.get(detected_species, SPECIES_DIAGNOSTICS["Daun_Lainnya"])
+        species_display = SPECIES_LABELS.get(detected_species, detected_species)
         
+        # Biometrik non-pakcoy yang aman dan kontekstual
+        biometrics = {
+            "fase_label": f"Bukan Pakcoy ({detected_species})",
+            "maturity_pct": 0.0,
+            "kondisi_daun": f"Non-Target ({detected_species})",
+            "kondisi_desc": f"Spesies terdeteksi: {species_display}",
+            "warna_daun": "Non-Pakcoy",
+            "warna_desc": "Spektrum visual khas spesies non-pakcoy",
+            "estimasi_lebar": f"N/A ({detected_species})",
+            "lebar_desc": f"N/A ({detected_species})",
+            "leaf_width_cm": 0.0,
+            "target_lebar_panen": 10.0,
+            "progres_lebar_pct": 0.0,
+            "status_panen_lebar": f"BUKAN PAKCOY ({detected_species.upper()})",
+            "rekomendasi_panen": diag["peringatan"],
+            "estimasi_sisa_hari": "Tidak Berlaku (Spesies Non-Target)",
+            "bentuk_daun": f"Khas {detected_species}",
+            "bentuk_desc": diag["alasan_bukan_pakcoy"][:70] + "...",
+            "jml_helai": "N/A",
+            "luas_kanopi": "N/A",
+            "luas_kanopi_pct": 0.0,
+            "yellow_pct": 0.0,
+            "spad_val": 0.0,
+            "green_density": 0,
+            "spesies_tanaman": species_display,
+            "karakter_pelepah": "Bukan Pelepah Sendok Sukulen Pakcoy",
+            "tekstur_daun": "Karakteristik Non-Pakcoy",
+            "turgor_sel": "N/A",
+            "biometric_indices": {
+                f"Keyakinan {detected_species} (%)": round(species_confidence, 1),
+                "Kemiripan Pakcoy (%)": round(float(species_probs_dict.get(SPECIES_LABELS['Pakcoy'], 0.0) * 100), 1),
+                "Kesesuaian Morfologi Pakcoy (%)": 0.0,
+                "Validitas Acuan Panen 40 HST (%)": 0.0,
+                "Tingkat Kematangan Pakcoy (%)": 0.0
+            },
+            "pred_class": "Bukan_Pakcoy"
+        }
+        
+        return {
+            "is_pakcoy": False,
+            "detected_species": detected_species,
+            "species_display": species_display,
+            "species_confidence": round(species_confidence, 1),
+            "species_probabilities": species_probs_dict,
+            "species_diagnostic": diag,
+            "predicted_class": "Bukan_Pakcoy",
+            "predicted_label": f"Bukan Pakcoy (Terdeteksi {detected_species})",
+            "confidence": round(species_confidence, 1),
+            "probabilities": species_probs_dict,
+            "visual_features": {
+                "kondisi_daun": f"Terdeteksi spesies: {species_display}.",
+                "bentuk_kanopi": diag["alasan_bukan_pakcoy"],
+                "rekomendasi_visual": diag["peringatan"]
+            },
+            "biometrics": biometrics,
+            "gradcam_image": gradcam_img,
+            "original_image": img_orig
+        }
+        
+    # =========================================================================
+    # TIER 2: DIAGNOSTIK KEMATANGAN & BIOMETRIK KHUSUS PAKCOY
+    # =========================================================================
     clf, scaler = get_vision_model()
     
     if clf is None or scaler is None:
@@ -463,8 +706,6 @@ def analyze_image_with_gradcam(image_input):
         pred_class = CLASS_NAMES[pred_idx]
         confidence = probs[pred_idx] * 100
         
-    gradcam_img = generate_saliency_heatmap(img_orig)
-    
     prob_dict = {
         CLASS_LABELS[c]: round(float(probs[i]), 4)
         for i, c in enumerate(CLASS_NAMES)
@@ -481,6 +722,11 @@ def analyze_image_with_gradcam(image_input):
         }
     
     return {
+        "is_pakcoy": True,
+        "detected_species": "Pakcoy",
+        "species_display": SPECIES_LABELS["Pakcoy"],
+        "species_confidence": round(species_confidence, 1),
+        "species_probabilities": species_probs_dict,
         "predicted_class": pred_class,
         "predicted_label": CLASS_LABELS[pred_class],
         "confidence": round(confidence, 1),

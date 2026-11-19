@@ -1,0 +1,21 @@
+{
+  "model_type": "Multi-Species Botanical Classifier (Soft Voting: RF + ExtraTrees + MLP)",
+  "classes": [
+    "Pakcoy",
+    "Selada",
+    "Bayam",
+    "Seledri",
+    "Daun_Lainnya"
+  ],
+  "class_counts": {
+    "Pakcoy": 121,
+    "Selada": 44,
+    "Bayam": 16,
+    "Seledri": 18,
+    "Daun_Lainnya": 9
+  },
+  "cv_accuracy": 0.9952,
+  "cv_std": 0.0095,
+  "train_accuracy": 1.0,
+  "total_samples": 208
+}

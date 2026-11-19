@@ -9,6 +9,202 @@ import plotly.graph_objects as go
 from services.cnn_service import analyze_image_with_gradcam
 from services.data_service import get_all_plants
 
+def render_pakcoy_growth_diagnosis(bio, res, selected_plant_id):
+    pred_cls = res.get("predicted_class", "Masa_Pertumbuhan")
+    conf_val = round(res.get("confidence", 89.0))
+    
+    leaf_w = bio.get("leaf_width_cm", 5.0)
+    canopy_cov = int(round(bio.get("luas_kanopi_pct", 32.0)))
+    yellow_pct = round(bio.get("yellow_pct", 17.8), 1)
+    spad_val = round(bio.get("spad_val", 41.3), 1)
+    green_density = bio.get("green_density", 73)
+    
+    if pred_cls == "Masa_Pertumbuhan":
+        leaf_w = bio.get("leaf_width_cm", 0.7)
+        conf_val = round(res.get("confidence", 89.0))
+        if leaf_w < 1.0:
+            fase_display = "Masa Pertumbuhan (Kotiledon / Kecambah)"
+            umur_range = "Hari ke-1 s.d. Hari ke-7 (Kecambah Dini)"
+            readiness_score = min(max(int(round((leaf_w / 10.0) * 50.0)), 4), 10)
+            norm_len = "0.8–2.0 cm"
+            norm_w = "< 1.0 cm (Fase Kotiledon)"
+            leaf_len = round(leaf_w * 1.5, 1)
+            leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+            canopy_diam = round(leaf_len * 1.4, 1)
+            canopy_status_text = "yang menunjukkan helai daun masih berupa keping klorofil lembaga (kotiledon) awal perkecambahan sebelum terbentuk daun sejati"
+            nutrition_text = "perlakuan semai lembut (air murni atau larutan encer <strong>AB Mix 200–300 ppm</strong> atau <strong>EC 0,4–0,6 mS/cm</strong>) dengan penyemprotan kabut halus agar batang semai tidak patah"
+            harvest_target_text = "sehingga bibit dapat tumbuh kokoh dan siap dipindah tanam pada Hari ke-14 s.d. 18 menuju panen optimal di <strong>Hari ke-35</strong>"
+        elif leaf_w <= 2.5:
+            fase_display = "Masa Pertumbuhan (Semai Daun Sejati Awal)"
+            umur_range = "Hari ke-8 s.d. Hari ke-14"
+            readiness_score = min(max(int(round(8 + (leaf_w - 1.0) * 8.0)), 8), 22)
+            norm_len = "2.0–4.8 cm"
+            norm_w = "1.0–2.5 cm (Daun Sejati Awal)"
+            leaf_len = round(leaf_w * 1.7, 1)
+            leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+            canopy_diam = round(leaf_len * 1.3, 1)
+            canopy_status_text = "yang menandakan daun sejati ke-1 hingga ke-3 mulai mekar dengan tangkai semai yang mulai mengokoh"
+            nutrition_text = "nutrisi pengenalan vegetatif (larutan <strong>AB Mix kepekatan 400–600 ppm</strong> atau <strong>EC 0,8–1,2 mS/cm</strong>)"
+            harvest_target_text = "menuju fase pembesaran daun sejati dan siap panen pada <strong>Hari ke-32 s.d. Hari ke-35</strong>"
+        else:
+            fase_display = "Masa Pertumbuhan (Vegetatif Aktif)"
+            umur_range = "Hari ke-15 s.d. Hari ke-22"
+            readiness_score = min(max(int(round(22 + (leaf_w - 2.5) * 8.0)), 22), 48)
+            norm_len = "5.0–11.0 cm"
+            norm_w = "2.6–5.5 cm (Vegetatif Aktif)"
+            leaf_len = round(leaf_w * 1.8, 1)
+            leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+            canopy_diam = round(leaf_len * 1.25, 1)
+            canopy_status_text = "yang menunjukkan bahwa susunan roset daun masih memiliki celah antar-tangkai karena tanaman sedang aktif melebarkan helai daun muda"
+            nutrition_text = "nutrisi pertumbuhan vegetatif (larutan <strong>AB Mix kepekatan 600–900 ppm</strong> atau <strong>EC 1,2–1,8 mS/cm</strong> untuk hidroponik, maupun pupuk cair kaya Nitrogen untuk media tanah)"
+            harvest_target_text = "sehingga tanaman dapat tumbuh mulus hingga waktu panen optimal pada <strong>Hari ke-30</strong>"
+
+        canopy_cov = int(round(bio.get("luas_kanopi_pct", 32.0)))
+        yellow_pct = round(bio.get("yellow_pct", 17.8), 1)
+        spad_val = round(bio.get("spad_val", 41.3), 1)
+        green_density = bio.get("green_density", 73)
+    elif pred_cls == "Mendekati_Panen":
+        fase_display = "Mendekati Panen (Pra-Panen)"
+        umur_range = "Hari ke-22 s.d. Hari ke-32"
+        readiness_score = min(max(int(round(55 + (leaf_w - 6.0) * 7.5)), 55), 84)
+        norm_len = "12.0–16.5 cm"
+        norm_w = "7.0–9.8 cm"
+        leaf_len = round(leaf_w * 1.75, 1)
+        leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+        canopy_diam = round(leaf_len * 1.25, 1)
+        canopy_status_text = "yang menunjukkan bahwa susunan roset daun mulai memadat rapat dengan tangkai pelepah yang menebal kokoh bersiap memasuki fase matang komersial"
+        nutrition_text = "nutrisi penguatan tajuk dan pelepah (larutan <strong>AB Mix kepekatan 900–1.200 ppm</strong> atau <strong>EC 1,8–2,4 mS/cm</strong> untuk hidroponik) dengan rasio Kalium dan Fosfor seimbang"
+        harvest_target_text = "sehingga tanaman dapat mencapai bobot panen standar dalam <strong>3–7 hari ke depan (Hari ke-35 s.d. Hari ke-38)</strong>"
+    else: # Siap_Panen
+        fase_display = "Siap Panen (Matang Optimal)"
+        umur_range = "Hari ke-33 s.d. Hari ke-40"
+        readiness_score = min(max(int(round(88 + (leaf_w - 10.0) * 3.5)), 88), 99)
+        norm_len = "16.0–22.0 cm"
+        norm_w = "10.0–14.5 cm"
+        leaf_len = round(leaf_w * 1.7, 1)
+        leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+        canopy_diam = round(leaf_len * 1.25, 1)
+        canopy_status_text = "yang menandakan tajuk mangkok roset telah menutup penuh sempurna dengan pelepah tebal renyah siap dipanen"
+        nutrition_text = "penyesuaian nutrisi akhir panen (larutan <strong>AB Mix 600–800 ppm</strong> atau pembilasan air murni selama 24 jam sebelum pemetikan)"
+        harvest_target_text = "dan segera laksanakan pemanenan pagi hari ini dengan memotong tepat di pangkal akar agar kesegaran dan kerenyahan daun pakcoy tetap maksimal"
+
+    if yellow_pct > 8.0:
+        klorosis_chip = "⚠️ Perhatian : gejala klorosis daun"
+        chlorosis_analysis = "Persentase warna kuning di atas 8% menandakan bahwa sebagian helai daun mengalami penurunan zat hijau daun (klorofil). Pada budidaya pakcoy, kondisi ini umumnya dipicu oleh tiga faktor utama: (1) kekurangan unsur hara makro terutama <strong>Nitrogen (N)</strong> atau <strong>Magnesium (Mg)</strong> yang dibutuhkan untuk pembentukan klorofil, (2) kondisi media tanam yang terlalu lembap/becek sehingga akar kekurangan oksigen dalam menyerap nutrisi, atau (3) kurangnya intensitas cahaya matahari pada helai daun bagian bawah."
+    else:
+        klorosis_chip = "✅ Status Daun: Sehat Prima (Bebas Klorosis)"
+        chlorosis_analysis = "Persentase warna kuning di bawah 8% menandakan bahwa pigmen klorofil berada dalam konsentrasi prima untuk asimilasi fotosintesis. Pada budidaya pakcoy, kondisi warna daun yang hijau pekat merata ini membuktikan kecukupan unsur hara makro Nitrogen (N) dan Magnesium (Mg) serta aerasi media tanam yang terjaga sangat baik tanpa mengalami klorosis."
+
+    if pred_cls == "Masa_Pertumbuhan":
+        if leaf_w < 1.0:
+            tajuk_chip = "< 3.5 cm (Kotiledon)"
+            nutrition_brief = "Air murni / AB Mix encer 200–300 ppm"
+            harvest_target_brief = "Hari ke-30 s.d. 35 (Fase Kotiledon)"
+        elif leaf_w <= 2.5:
+            tajuk_chip = "3.5–7.0 cm (Semai Awal)"
+            nutrition_brief = "AB Mix encer 400–600 ppm"
+            harvest_target_brief = "Hari ke-30 s.d. 35 (Semai Awal)"
+        else:
+            tajuk_chip = "7.0–11.0 cm"
+            nutrition_brief = "AB Mix 600–900 ppm (EC 1.2–1.8 mS/cm)"
+            harvest_target_brief = "Hari ke-28 s.d. 32"
+        klorosis_brief = "Penurunan klorofil ringan (evaluasi N/Mg & drainase)" if yellow_pct > 8.0 else "Klorofil optimal, fotosintesis prima"
+    elif pred_cls == "Mendekati_Panen":
+        tajuk_chip = "12.0–16.5 cm"
+        nutrition_brief = "AB Mix 900–1.200 ppm (EC 1.8–2.4 mS/cm)"
+        harvest_target_brief = "3–7 hari lagi (Hari ke-35 s.d. 38)"
+        klorosis_brief = "Klorosis wajar daun tua, kurangi kelembapan" if yellow_pct > 8.0 else "Daun sangat prima & kokoh"
+    else:
+        tajuk_chip = "16.0–22.0 cm"
+        nutrition_brief = "Bilas air bersih / AB Mix 600–800 ppm"
+        harvest_target_brief = "Hari ke-38 s.d. 40 (Siap Panen Hari Ini!)"
+        klorosis_brief = "Klorosis normal pada daun basal luar" if yellow_pct > 8.0 else "Roset tebal sempurna & segar"
+
+    st.html(f"""
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; margin-bottom: 12px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
+            <span style="font-weight: 700; color: #0f172a;">📐 Standar tajuk:</span> {tajuk_chip}
+        </div>
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
+            <span style="font-weight: 700; color: #047857;">🌿 Kepekatan hijau {green_density}%</span> • Tutupan {canopy_cov}%
+        </div>
+        <div style="background: {'#fffbeb' if yellow_pct > 8.0 else '#f0fdf4'}; border: 1px solid {'#fde68a' if yellow_pct > 8.0 else '#bbf7d0'}; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: {'#b45309' if yellow_pct > 8.0 else '#166534'}; display: flex; align-items: center; gap: 6px; font-weight: 700;">
+            {klorosis_chip}
+        </div>
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
+            <span style="font-weight: 700; color: #0284c7;">🏷️ Batch Tanaman:</span> {selected_plant_id}
+        </div>
+    </div>
+    """)
+    st.html(f"""
+    <div style="background: #ffffff; border: 1.5px solid #10b981; border-left: 6px solid #059669; border-radius: 14px; padding: 20px 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); margin-top: 10px; margin-bottom: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.3rem; line-height: 1;">🎯</span>
+                <span style="font-size: 1.12rem; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                    Ringkasan Analisis AI &amp; Rekomendasi Perawatan Pakcoy
+                </span>
+            </div>
+            <span style="background: #dcfce7; color: #166534; font-size: 0.76rem; font-weight: 700; padding: 4px 12px; border-radius: 9999px; border: 1px solid #bbf7d0;">
+                Diagnostik Singkat &amp; Presisi
+            </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                <div style="font-size: 0.72rem; font-weight: 800; color: #059669; text-transform: uppercase; letter-spacing: 0.04em;">🌱 FASE &amp; KESIAPAN</div>
+                <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">{fase_display}</div>
+                <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">{umur_range}</div>
+                <div style="font-size: 0.82rem; color: #334155; margin-top: 4px;">Keyakinan AI: <strong>{conf_val}%</strong> • Skor: <strong>{readiness_score}/100</strong></div>
+            </div>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                <div style="font-size: 0.72rem; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.04em;">🍃 MORFOLOGI TAJUK</div>
+                <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">P: ±{leaf_len} cm • L: ±{leaf_w} cm</div>
+                <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Standar fase: {norm_w}</div>
+                <div style="font-size: 0.82rem; color: #334155; margin-top: 4px;">Tajuk: <strong>±{canopy_diam} cm</strong> • Kanopi: <strong>{canopy_cov}%</strong></div>
+            </div>
+
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                <div style="font-size: 0.72rem; font-weight: 800; color: {'#b45309' if yellow_pct > 8.0 else '#166534'}; text-transform: uppercase; letter-spacing: 0.04em;">🧪 SPEKTRUM KLOROFIL</div>
+                <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">{spad_val} SPAD (Hijau {green_density}%)</div>
+                <div style="font-size: 0.8rem; color: {'#b45309' if yellow_pct > 8.0 else '#059669'}; margin-top: 2px;">Klorosis: <strong>{yellow_pct}%</strong></div>
+                <div style="font-size: 0.82rem; color: #334155; margin-top: 4px;">Status: <em>{klorosis_brief}</em></div>
+            </div>
+        </div>
+
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px;">
+            <div style="font-size: 0.82rem; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
+                📋 REKOMENDASI TINDAKAN CEPAT
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; font-size: 0.86rem; color: #334155;">
+                <div>💧 <strong>Air:</strong> Kelembapan <strong>55%–75%</strong> (Siram 07:00 &amp; 16:00)</div>
+                <div>⚡ <strong>Nutrisi:</strong> <strong>{nutrition_brief}</strong> (pH 6.0–6.8, Suhu 20–30°C)</div>
+                <div>✂️ <strong>Tajuk:</strong> Pangkas daun kuning bawah, periksa hama ulat/kutu</div>
+                <div>🎯 <strong>Panen:</strong> Target panen optimal pada <strong>{harvest_target_brief}</strong></div>
+            </div>
+        </div>
+    </div>
+    """)
+
+    with st.expander("📄 Tampilkan Laporan Diagnostik AI Naratif Lengkap (Versi Detail)", expanded=False):
+        st.html(f"""
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #334155; font-size: 0.92rem;">
+            <p style="margin-bottom: 14px; text-align: justify;">
+                Berdasarkan hasil pemeriksaan visual menggunakan model kecerdasan buatan, tanaman pakcoy pada foto ini teridentifikasi berada pada fase <strong>{fase_display}</strong> (perkiraan umur tanam <strong>{umur_range}</strong>) dengan tingkat keyakinan AI sebesar <strong>{conf_val}%</strong> dan skor kesiapan panen <strong>{readiness_score}/100</strong>. Dari sisi ukuran fisik morfologi tanaman pakcoy asli, helaian daun utama memiliki <strong>panjang daun ± {leaf_len} cm</strong> (standar normal fase ini: {norm_len}) dan <strong>lebar daun ± {leaf_w} cm</strong> (standar normal: {norm_w}), sehingga menghasilkan <strong>luas permukaan per helai daun sekitar {leaf_area} cm²</strong>. Sementara itu, bentang <strong>diameter tajuk rumpun mencapai ± {canopy_diam} cm</strong> dengan tingkat kerapatan kanopi sebesar <strong>{canopy_cov}%</strong>, {canopy_status_text}.
+            </p>
+            <p style="margin-bottom: 14px; text-align: justify;">
+                Dari hasil analisis spektrum warna daun, terdeteksi adanya <strong>gejala daun menguning (klorosis) sebesar {yellow_pct}%</strong> dengan <strong>indeks klorofil hijau {spad_val} SPAD</strong> (kepekatan warna hijau {green_density}%). {chlorosis_analysis}
+            </p>
+            <p style="margin-bottom: 14px; text-align: justify;">
+                <strong>Saran Perawatan Air, Nutrisi &amp; Lingkungan:</strong> Untuk menjaga pertumbuhan pakcoy tetap optimal, pastikan kelembapan media tanam selalu berada pada rentang ideal <strong>55% hingga 75%</strong> dengan jadwal penyiraman teratur pada pagi hari (pukul 07:00–08:00) dan sore hari (pukul 16:00–17:00). Selanjutnya, berikan {nutrition_text} guna mempercepat pertambahan jumlah dan panjang helai daun. Jaga pH media tanam atau air nutrisi pada kisaran <strong>pH 6,0–6,8</strong> serta pertahankan suhu lingkungan di rentang <strong>20°C–30°C</strong> dengan paparan sinar matahari minimal 4–6 jam per hari.
+            </p>
+            <p style="margin-bottom: 0; text-align: justify;">
+                <strong>Tindakan Pemeliharaan Tajuk &amp; Target Panen:</strong> Segera pangkas dan bersihkan helai daun bagian bawah yang tampak menguning atau layu menggunakan gunting bersih agar nutrisi terfokus ke daun utama dan tidak memicu kelembapan berlebih yang mengundang jamur. Periksa permukaan bawah daun secara rutin setiap pagi untuk mencegah serangan hama ulat daun (<em>Plutella xylostella</em>) dan kutu daun (<em>Aphids</em>) sejak dini, {harvest_target_text}.
+            </p>
+        </div>
+        """)
+
 def render_image_analysis(selected_plant_id: str = "PCK-001"):
     # --- 1. HEADER SECTION ---
     col_head1, col_head2 = st.columns([2.2, 1.2])
@@ -159,6 +355,49 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
             except Exception:
                 pass
 
+        is_pakcoy = res.get("is_pakcoy", True)
+        detected_species = res.get("detected_species", "Pakcoy")
+        species_conf = res.get("species_confidence", 95.0)
+        species_diag = res.get("species_diagnostic", {})
+        species_display = res.get("species_display", detected_species)
+
+        # Species Alert / Verification Banner
+        if not is_pakcoy:
+            st.html(f"""
+            <div style="background: #fffbeb; border: 1.5px solid #f59e0b; border-left: 6px solid #d97706; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(217,119,6,0.06); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 1.8rem; line-height: 1;">⚠️</span>
+                        <div>
+                            <h4 style="margin: 0; color: #92400e; font-size: 1.1rem; font-weight: 800; letter-spacing: -0.3px;">
+                                PERINGATAN BOTANI: TERDETEKSI SPESIES BUKAN PAKCOY
+                            </h4>
+                            <p style="margin: 3px 0 0 0; color: #78350f; font-size: 0.88rem; line-height: 1.4;">
+                                Model AI mengenali tanaman ini sebagai <strong>{species_display}</strong> dengan keyakinan <strong>{species_conf:.1f}%</strong>. Standar kalibrasi panen 40 HST dan lebar daun Pakcoy tidak dapat diaplikasikan.
+                            </p>
+                        </div>
+                    </div>
+                    <span style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; font-weight: 800; font-size: 0.76rem; padding: 4px 10px; border-radius: 6px;">
+                        SPESIES NON-TARGET
+                    </span>
+                </div>
+            </div>
+            """)
+        else:
+            st.html(f"""
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 5px solid #10b981; border-radius: 10px; padding: 10px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.15rem;">🌿</span>
+                    <span style="font-size: 0.88rem; color: #166534; font-weight: 700;">
+                        Spesies Terverifikasi: Pakcoy (<em>Brassica rapa</em> subsp. <em>chinensis</em>)
+                    </span>
+                </div>
+                <span style="background: #dcfce7; color: #15803d; font-size: 0.74rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; border: 1px solid #86efac;">
+                    Validitas Botani: {species_conf:.1f}%
+                </span>
+            </div>
+            """)
+
         # --- TWO-COLUMN LAYOUT EXACTLY MATCHING USER SCREENSHOT ---
         col_input, col_bio = st.columns([1.05, 1.25], gap="large")
 
@@ -182,42 +421,120 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
 
         # ----------------- RIGHT COLUMN: HASIL EKSTRAKSI BIOMETRIK -----------------
         with col_bio:
-            leaf_w_val = bio.get('leaf_width_cm', 10.5)
-            is_ready = leaf_w_val >= 10.0
-            badge_color = "#059669" if is_ready else ("#d97706" if leaf_w_val >= 6.0 else "#0284c7")
-            badge_bg = "#ecfdf5" if is_ready else ("#fffbeb" if leaf_w_val >= 6.0 else "#eff6ff")
-            badge_border = "#a7f3d0" if is_ready else ("#fde68a" if leaf_w_val >= 6.0 else "#bfdbfe")
-            status_text = "SIAP PANEN (MATANG OPTIMAL)" if is_ready else ("MENDEKATI PANEN (PRA-PANEN)" if leaf_w_val >= 6.0 else "MASA PERTUMBUHAN (BELUM SIAP PANEN)")
-            progress_pct = min(round((leaf_w_val / 10.0) * 100.0, 1), 100.0)
+            if not is_pakcoy:
+                st.html(f"""
+                <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.03); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 0.76rem; font-weight: 800; color: #b45309; text-transform: uppercase; letter-spacing: 0.05em;">
+                            🛑 VERIFIKASI SPESIES NON-PAKCOY
+                        </span>
+                        <span style="background: #d97706; color: #ffffff; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;">
+                            BUKAN PAKCOY
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px;">
+                        <div>
+                            <span style="font-size: 1.65rem; font-weight: 800; color: #0f172a;">{detected_species}</span>
+                            <span style="font-size: 0.82rem; color: #64748b; margin-left: 6px;">({species_diag.get('nama_ilmiah', '-')})</span>
+                        </div>
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #b45309;">
+                            Keyakinan: {species_conf:.1f}%
+                        </div>
+                    </div>
+                    <div style="background: #fed7aa; border-radius: 9999px; height: 8px; overflow: hidden; margin: 8px 0 6px 0;">
+                        <div style="background: #ea580c; width: {min(species_conf, 100.0)}%; height: 100%; border-radius: 9999px;"></div>
+                    </div>
+                    <p style="font-size: 0.82rem; color: #78350f; margin: 6px 0 0 0; line-height: 1.45;">
+                        💡 <strong>Alasan Morfologi:</strong> {species_diag.get('alasan_bukan_pakcoy', 'Karakteristik daun berbeda dengan pakcoy.')}
+                    </p>
+                </div>
 
-            # Dedicated Leaf-Width Harvest Determination Card
-            st.html(f"""
-            <div style="background: {badge_bg}; border: 1.5px solid {badge_border}; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 0.76rem; font-weight: 800; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.05em;">
-                        🍃 PENENTUAN MASA PANEN BERDASARKAN LEBAR DAUN (CNN)
-                    </span>
-                    <span style="background: {badge_color}; color: #ffffff; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;">
-                        {status_text}
-                    </span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px;">
-                    <div>
-                        <span style="font-size: 1.9rem; font-weight: 800; color: #0f172a;">{leaf_w_val} cm</span>
-                        <span style="font-size: 0.82rem; color: #64748b; margin-left: 6px;">(Standar Panen: ≥ 10.0 cm)</span>
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                    <h3 style="color: #0f172a; font-size: 1.15rem; font-weight: 700; margin: 0 0 12px 0;">
+                        Karakteristik Taksonomi Terdeteksi
+                    </h3>
+
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0 2px 8px -2px rgba(0,0,0,0.04); display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 14px;">
+                            <div style="background: #fff7ed; border-radius: 10px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 1.5px solid #fed7aa; color: #ea580c;">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            </div>
+                            <div>
+                                <div style="font-size: 0.72rem; font-weight: 800; color: #c2410c; text-transform: uppercase; letter-spacing: 0.05em;">
+                                    STATUS TAKSONOMI
+                                </div>
+                                <div style="font-size: 1.15rem; font-weight: 800; color: #9a3412; margin-top: 2px;">
+                                    {species_display}
+                                </div>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.85rem; font-weight: 800; color: #ea580c; line-height: 1;">
+                                {species_conf:.1f}%
+                            </div>
+                            <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-top: 2px;">
+                                Confidence
+                            </div>
+                        </div>
                     </div>
-                    <div style="font-size: 0.85rem; font-weight: 700; color: {badge_color};">
-                        {bio.get('estimasi_sisa_hari', 'Siap Panen')}
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                            <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase;">FAMILI BOTANI</div>
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-top: 4px;">{species_diag.get('famili', '-')}</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                            <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase;">PELEPAH PAKCOY</div>
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #dc2626; margin-top: 4px;">Tidak Ada (0%)</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                            <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase;">ACUAN PANEN 40 HST</div>
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #dc2626; margin-top: 4px;">Tidak Berlaku</div>
+                        </div>
+                        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                            <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase;">REKOMENDASI MODEL</div>
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #0284c7; margin-top: 4px;">Gunakan Foto Pakcoy</div>
+                        </div>
                     </div>
                 </div>
-                <div style="background: #e2e8f0; border-radius: 9999px; height: 8px; overflow: hidden; margin: 8px 0 6px 0;">
-                    <div style="background: {badge_color}; width: {progress_pct}%; height: 100%; border-radius: 9999px;"></div>
+                """)
+            else:
+                leaf_w_val = bio.get('leaf_width_cm', 10.5)
+                is_ready = leaf_w_val >= 10.0
+                badge_color = "#059669" if is_ready else ("#d97706" if leaf_w_val >= 6.0 else "#0284c7")
+                badge_bg = "#ecfdf5" if is_ready else ("#fffbeb" if leaf_w_val >= 6.0 else "#eff6ff")
+                badge_border = "#a7f3d0" if is_ready else ("#fde68a" if leaf_w_val >= 6.0 else "#bfdbfe")
+                status_text = "SIAP PANEN (MATANG OPTIMAL)" if is_ready else ("MENDEKATI PANEN (PRA-PANEN)" if leaf_w_val >= 6.0 else "MASA PERTUMBUHAN (BELUM SIAP PANEN)")
+                progress_pct = min(round((leaf_w_val / 10.0) * 100.0, 1), 100.0)
+
+                # Dedicated Leaf-Width Harvest Determination Card
+                st.html(f"""
+                <div style="background: {badge_bg}; border: 1.5px solid {badge_border}; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 0.76rem; font-weight: 800; color: {badge_color}; text-transform: uppercase; letter-spacing: 0.05em;">
+                            🍃 PENENTUAN MASA PANEN BERDASARKAN LEBAR DAUN (CNN)
+                        </span>
+                        <span style="background: {badge_color}; color: #ffffff; font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 6px;">
+                            {status_text}
+                        </span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px;">
+                        <div>
+                            <span style="font-size: 1.9rem; font-weight: 800; color: #0f172a;">{leaf_w_val} cm</span>
+                            <span style="font-size: 0.82rem; color: #64748b; margin-left: 6px;">(Standar Panen: ≥ 10.0 cm)</span>
+                        </div>
+                        <div style="font-size: 0.85rem; font-weight: 700; color: {badge_color};">
+                            {bio.get('estimasi_sisa_hari', 'Siap Panen')}
+                        </div>
+                    </div>
+                    <div style="background: #e2e8f0; border-radius: 9999px; height: 8px; overflow: hidden; margin: 8px 0 6px 0;">
+                        <div style="background: {badge_color}; width: {progress_pct}%; height: 100%; border-radius: 9999px;"></div>
+                    </div>
+                    <p style="font-size: 0.8rem; color: #475569; margin: 4px 0 0 0; line-height: 1.4;">
+                        💡 <strong>Kaidah Fisiologis:</strong> {bio.get('rekomendasi_panen', 'Pakcoy dipanen saat daun mangkok mencapai lebar standar 10-12 cm.')}
+                    </p>
                 </div>
-                <p style="font-size: 0.8rem; color: #475569; margin: 4px 0 0 0; line-height: 1.4;">
-                    💡 <strong>Kaidah Fisiologis:</strong> {bio.get('rekomendasi_panen', 'Pakcoy dipanen saat daun mangkok mencapai lebar standar 10-12 cm.')}
-                </p>
-            </div>
-            """)
+                """)
 
             bio_html = f"""
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
@@ -315,206 +632,44 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
             st.html(bio_html)
 
         # ----------------- SECTION DIAGNOSTIK AI & REKOMENDASI PERAWATAN PAKCOY -----------------
-        # Ekstraksi dan kalkulasi nilai diagnostik agronomi secara presisi
-        pred_cls = res.get("predicted_class", "Masa_Pertumbuhan")
-        conf_val = round(res.get("confidence", 89.0))
-        
-        leaf_w = bio.get("leaf_width_cm", 5.0)
-        canopy_cov = int(round(bio.get("luas_kanopi_pct", 32.0)))
-        yellow_pct = round(bio.get("yellow_pct", 17.8), 1)
-        spad_val = round(bio.get("spad_val", 41.3), 1)
-        green_density = bio.get("green_density", 73)
-        
-        if pred_cls == "Masa_Pertumbuhan":
-            leaf_w = bio.get("leaf_width_cm", 0.7)
-            conf_val = round(res.get("confidence", 89.0))
-            if leaf_w < 1.0:
-                fase_display = "Masa Pertumbuhan (Kotiledon / Kecambah)"
-                umur_range = "Hari ke-1 s.d. Hari ke-7 (Kecambah Dini)"
-                readiness_score = min(max(int(round((leaf_w / 10.0) * 50.0)), 4), 10)
-                norm_len = "0.8–2.0 cm"
-                norm_w = "< 1.0 cm (Fase Kotiledon)"
-                leaf_len = round(leaf_w * 1.5, 1)
-                leaf_area = round(leaf_w * leaf_len * 0.673, 1)
-                canopy_diam = round(leaf_len * 1.4, 1)
-                canopy_status_text = "yang menunjukkan helai daun masih berupa keping klorofil lembaga (kotiledon) awal perkecambahan sebelum terbentuk daun sejati"
-                nutrition_text = "perlakuan semai lembut (air murni atau larutan encer <strong>AB Mix 200–300 ppm</strong> atau <strong>EC 0,4–0,6 mS/cm</strong>) dengan penyemprotan kabut halus agar batang semai tidak patah"
-                harvest_target_text = "sehingga bibit dapat tumbuh kokoh dan siap dipindah tanam pada Hari ke-14 s.d. 18 menuju panen optimal di <strong>Hari ke-35</strong>"
-            elif leaf_w <= 2.5:
-                fase_display = "Masa Pertumbuhan (Semai Daun Sejati Awal)"
-                umur_range = "Hari ke-8 s.d. Hari ke-14"
-                readiness_score = min(max(int(round(8 + (leaf_w - 1.0) * 8.0)), 8), 22)
-                norm_len = "2.0–4.8 cm"
-                norm_w = "1.0–2.5 cm (Daun Sejati Awal)"
-                leaf_len = round(leaf_w * 1.7, 1)
-                leaf_area = round(leaf_w * leaf_len * 0.673, 1)
-                canopy_diam = round(leaf_len * 1.3, 1)
-                canopy_status_text = "yang menandakan daun sejati ke-1 hingga ke-3 mulai mekar dengan tangkai semai yang mulai mengokoh"
-                nutrition_text = "nutrisi pengenalan vegetatif (larutan <strong>AB Mix kepekatan 400–600 ppm</strong> atau <strong>EC 0,8–1,2 mS/cm</strong>)"
-                harvest_target_text = "menuju fase pembesaran daun sejati dan siap panen pada <strong>Hari ke-32 s.d. Hari ke-35</strong>"
-            else:
-                fase_display = "Masa Pertumbuhan (Vegetatif Aktif)"
-                umur_range = "Hari ke-15 s.d. Hari ke-22"
-                readiness_score = min(max(int(round(22 + (leaf_w - 2.5) * 8.0)), 22), 48)
-                norm_len = "5.0–11.0 cm"
-                norm_w = "2.6–5.5 cm (Vegetatif Aktif)"
-                leaf_len = round(leaf_w * 1.8, 1)
-                leaf_area = round(leaf_w * leaf_len * 0.673, 1)
-                canopy_diam = round(leaf_len * 1.25, 1)
-                canopy_status_text = "yang menunjukkan bahwa susunan roset daun masih memiliki celah antar-tangkai karena tanaman sedang aktif melebarkan helai daun muda"
-                nutrition_text = "nutrisi pertumbuhan vegetatif (larutan <strong>AB Mix kepekatan 600–900 ppm</strong> atau <strong>EC 1,2–1,8 mS/cm</strong> untuk hidroponik, maupun pupuk cair kaya Nitrogen untuk media tanah)"
-                harvest_target_text = "sehingga tanaman dapat tumbuh mulus hingga waktu panen optimal pada <strong>Hari ke-30</strong>"
-
-            canopy_cov = int(round(bio.get("luas_kanopi_pct", 32.0)))
-            yellow_pct = round(bio.get("yellow_pct", 17.8), 1)
-            spad_val = round(bio.get("spad_val", 41.3), 1)
-            green_density = bio.get("green_density", 73)
-        elif pred_cls == "Mendekati_Panen":
-            fase_display = "Mendekati Panen (Pra-Panen)"
-            umur_range = "Hari ke-22 s.d. Hari ke-32"
-            readiness_score = min(max(int(round(55 + (leaf_w - 6.0) * 7.5)), 55), 84)
-            norm_len = "12.0–16.5 cm"
-            norm_w = "7.0–9.8 cm"
-            leaf_len = round(leaf_w * 1.75, 1)
-            leaf_area = round(leaf_w * leaf_len * 0.673, 1)
-            canopy_diam = round(leaf_len * 1.25, 1)
-            canopy_status_text = "yang menunjukkan bahwa susunan roset daun mulai memadat rapat dengan tangkai pelepah yang menebal kokoh bersiap memasuki fase matang komersial"
-            nutrition_text = "nutrisi penguatan tajuk dan pelepah (larutan <strong>AB Mix kepekatan 900–1.200 ppm</strong> atau <strong>EC 1,8–2,4 mS/cm</strong> untuk hidroponik) dengan rasio Kalium dan Fosfor seimbang"
-            harvest_target_text = "sehingga tanaman dapat mencapai bobot panen standar dalam <strong>3–7 hari ke depan (Hari ke-35 s.d. Hari ke-38)</strong>"
-        else: # Siap_Panen
-            fase_display = "Siap Panen (Matang Optimal)"
-            umur_range = "Hari ke-33 s.d. Hari ke-40"
-            readiness_score = min(max(int(round(88 + (leaf_w - 10.0) * 3.5)), 88), 99)
-            norm_len = "16.0–22.0 cm"
-            norm_w = "10.0–14.5 cm"
-            leaf_len = round(leaf_w * 1.7, 1)
-            leaf_area = round(leaf_w * leaf_len * 0.673, 1)
-            canopy_diam = round(leaf_len * 1.25, 1)
-            canopy_status_text = "yang menandakan tajuk mangkok roset telah menutup penuh sempurna dengan pelepah tebal renyah siap dipanen"
-            nutrition_text = "penyesuaian nutrisi akhir panen (larutan <strong>AB Mix 600–800 ppm</strong> atau pembilasan air murni selama 24 jam sebelum pemetikan)"
-            harvest_target_text = "dan segera laksanakan pemanenan pagi hari ini dengan memotong tepat di pangkal akar agar kesegaran dan kerenyahan daun pakcoy tetap maksimal"
-
-        if yellow_pct > 8.0:
-            klorosis_chip = "⚠️ Perhatian : gejala klorosis daun"
-            chlorosis_analysis = "Persentase warna kuning di atas 8% menandakan bahwa sebagian helai daun mengalami penurunan zat hijau daun (klorofil). Pada budidaya pakcoy, kondisi ini umumnya dipicu oleh tiga faktor utama: (1) kekurangan unsur hara makro terutama <strong>Nitrogen (N)</strong> atau <strong>Magnesium (Mg)</strong> yang dibutuhkan untuk pembentukan klorofil, (2) kondisi media tanam yang terlalu lembap/becek sehingga akar kekurangan oksigen dalam menyerap nutrisi, atau (3) kurangnya intensitas cahaya matahari pada helai daun bagian bawah."
-        else:
-            klorosis_chip = "✅ Status Daun: Sehat Prima (Bebas Klorosis)"
-            chlorosis_analysis = "Persentase warna kuning di bawah 8% menandakan bahwa pigmen klorofil berada dalam konsentrasi prima untuk asimilasi fotosintesis. Pada budidaya pakcoy, kondisi warna daun yang hijau pekat merata ini membuktikan kecukupan unsur hara makro Nitrogen (N) dan Magnesium (Mg) serta aerasi media tanam yang terjaga sangat baik tanpa mengalami klorosis."
-
-        if pred_cls == "Masa_Pertumbuhan":
-            if leaf_w < 1.0:
-                tajuk_chip = "< 3.5 cm (Kotiledon)"
-                nutrition_brief = "Air murni / AB Mix encer 200–300 ppm"
-                harvest_target_brief = "Hari ke-30 s.d. 35 (Fase Kotiledon)"
-            elif leaf_w <= 2.5:
-                tajuk_chip = "3.5–7.0 cm (Semai Awal)"
-                nutrition_brief = "AB Mix encer 400–600 ppm"
-                harvest_target_brief = "Hari ke-30 s.d. 35 (Semai Awal)"
-            else:
-                tajuk_chip = "7.0–11.0 cm"
-                nutrition_brief = "AB Mix 600–900 ppm (EC 1.2–1.8 mS/cm)"
-                harvest_target_brief = "Hari ke-28 s.d. 32"
-            klorosis_brief = "Penurunan klorofil ringan (evaluasi N/Mg & drainase)" if yellow_pct > 8.0 else "Klorofil optimal, fotosintesis prima"
-        elif pred_cls == "Mendekati_Panen":
-            tajuk_chip = "12.0–16.5 cm"
-            nutrition_brief = "AB Mix 900–1.200 ppm (EC 1.8–2.4 mS/cm)"
-            harvest_target_brief = "3–7 hari lagi (Hari ke-35 s.d. 38)"
-            klorosis_brief = "Klorosis wajar daun tua, kurangi kelembapan" if yellow_pct > 8.0 else "Daun sangat prima & kokoh"
-        else:
-            tajuk_chip = "16.0–22.0 cm"
-            nutrition_brief = "Bilas air bersih / AB Mix 600–800 ppm"
-            harvest_target_brief = "Hari ke-38 s.d. 40 (Siap Panen Hari Ini!)"
-            klorosis_brief = "Klorosis normal pada daun basal luar" if yellow_pct > 8.0 else "Roset tebal sempurna & segar"
-
-        # Quick metric summary chips exactly as shown in screenshot
-        st.html(f"""
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; margin-bottom: 12px;">
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; color: #0f172a;">📐 Standar tajuk:</span> {tajuk_chip}
-            </div>
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; color: #047857;">🌿 Kepekatan hijau {green_density}%</span> • Tutupan {canopy_cov}%
-            </div>
-            <div style="background: {'#fffbeb' if yellow_pct > 8.0 else '#f0fdf4'}; border: 1px solid {'#fde68a' if yellow_pct > 8.0 else '#bbf7d0'}; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: {'#b45309' if yellow_pct > 8.0 else '#166534'}; display: flex; align-items: center; gap: 6px; font-weight: 700;">
-                {klorosis_chip}
-            </div>
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; color: #0284c7;">🏷️ Batch Tanaman:</span> {selected_plant_id}
-            </div>
-        </div>
-        """)
-        # Full-width Diagnostic Card (Versi Singkat, Padat & Terstruktur)
-        st.html(f"""
-        <div style="background: #ffffff; border: 1.5px solid #10b981; border-left: 6px solid #059669; border-radius: 14px; padding: 20px 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); margin-top: 10px; margin-bottom: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 1.3rem; line-height: 1;">🎯</span>
-                    <span style="font-size: 1.12rem; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
-                        Ringkasan Analisis AI &amp; Rekomendasi Perawatan Pakcoy
+        if not is_pakcoy:
+            st.html(f"""
+            <div style="background: #ffffff; border: 1.5px solid #f59e0b; border-left: 6px solid #d97706; border-radius: 14px; padding: 20px 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); margin-top: 10px; margin-bottom: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.3rem;">🛑</span>
+                        <span style="font-size: 1.12rem; font-weight: 800; color: #0f172a;">
+                            Analisis Botani: Alasan Spesies Ditolak Sebagai Pakcoy
+                        </span>
+                    </div>
+                    <span style="background: #fef3c7; color: #92400e; font-size: 0.76rem; font-weight: 700; padding: 4px 12px; border-radius: 9999px; border: 1px solid #fde68a;">
+                        Verifikasi Taksonomi
                     </span>
                 </div>
-                <span style="background: #dcfce7; color: #166534; font-size: 0.76rem; font-weight: 700; padding: 4px 12px; border-radius: 9999px; border: 1px solid #bbf7d0;">
-                    Diagnostik Singkat &amp; Presisi
-                </span>
-            </div>
-
-            <!-- Grid 3 Poin Utama Biometrik & Klorofil -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 14px;">
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
-                    <div style="font-size: 0.72rem; font-weight: 800; color: #059669; text-transform: uppercase; letter-spacing: 0.04em;">🌱 FASE &amp; KESIAPAN</div>
-                    <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">{fase_display}</div>
-                    <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">{umur_range}</div>
-                    <div style="font-size: 0.82rem; color: #334155; margin-top: 4px;">Keyakinan AI: <strong>{conf_val}%</strong> • Skor: <strong>{readiness_score}/100</strong></div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 14px;">
+                    <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 12px 14px;">
+                        <div style="font-size: 0.72rem; font-weight: 800; color: #b45309; text-transform: uppercase;">🌱 SPESIES TERDETEKSI</div>
+                        <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">{detected_species}</div>
+                        <div style="font-size: 0.8rem; color: #78350f; margin-top: 2px;">{species_diag.get('nama_ilmiah', '-')}</div>
+                    </div>
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
+                        <div style="font-size: 0.72rem; font-weight: 800; color: #0284c7; text-transform: uppercase;">🍃 PERBEDAAN MORFOLOGI</div>
+                        <div style="font-size: 0.82rem; color: #334155; margin-top: 3px; line-height: 1.4;">{species_diag.get('alasan_bukan_pakcoy', '-')}</div>
+                    </div>
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px;">
+                        <div style="font-size: 0.72rem; font-weight: 800; color: #166534; text-transform: uppercase;">📋 SARAN BUDIDAYA</div>
+                        <div style="font-size: 0.82rem; color: #166534; margin-top: 3px; line-height: 1.4;">{species_diag.get('saran', '-')}</div>
+                    </div>
                 </div>
-
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
-                    <div style="font-size: 0.72rem; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.04em;">🍃 MORFOLOGI TAJUK</div>
-                    <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">P: ±{leaf_len} cm • L: ±{leaf_w} cm</div>
-                    <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Standar fase: {norm_w}</div>
-                    <div style="font-size: 0.82rem; color: #334155; margin-top: 4px;">Tajuk: <strong>±{canopy_diam} cm</strong> • Kanopi: <strong>{canopy_cov}%</strong></div>
+                
+                <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 12px 16px; font-size: 0.86rem; color: #9a3412; line-height: 1.5;">
+                    ⚠️ <strong>Informasi Sistem:</strong> Model AI Smart Farming ini dilatih secara khusus untuk siklus 40 HST tanaman <strong>Pakcoy</strong> (<em>Brassica rapa</em> subsp. <em>chinensis</em>). Untuk mendapatkan analisis kesiapan panen dan lebar daun yang akurat, mohon unggah foto tanaman Pakcoy.
                 </div>
-
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;">
-                    <div style="font-size: 0.72rem; font-weight: 800; color: {'#b45309' if yellow_pct > 8.0 else '#166534'}; text-transform: uppercase; letter-spacing: 0.04em;">🧪 SPEKTRUM KLOROFIL</div>
-                    <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-top: 3px;">{spad_val} SPAD (Hijau {green_density}%)</div>
-                    <div style="font-size: 0.8rem; color: {'#b45309' if yellow_pct > 8.0 else '#059669'}; margin-top: 2px;">Klorosis: <strong>{yellow_pct}%</strong></div>
-                    <div style="font-size: 0.82rem; color: #334155; margin-top: 4px;">Status: <em>{klorosis_brief}</em></div>
-                </div>
-            </div>
-
-            <!-- Rekomendasi Tindakan Cepat -->
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px;">
-                <div style="font-size: 0.82rem; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
-                    📋 REKOMENDASI TINDAKAN CEPAT
-                </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; font-size: 0.86rem; color: #334155;">
-                    <div>💧 <strong>Air:</strong> Kelembapan <strong>55%–75%</strong> (Siram 07:00 &amp; 16:00)</div>
-                    <div>⚡ <strong>Nutrisi:</strong> <strong>{nutrition_brief}</strong> (pH 6.0–6.8, Suhu 20–30°C)</div>
-                    <div>✂️ <strong>Tajuk:</strong> Pangkas daun kuning bawah, periksa hama ulat/kutu</div>
-                    <div>🎯 <strong>Panen:</strong> Target panen optimal pada <strong>{harvest_target_brief}</strong></div>
-                </div>
-            </div>
-        </div>
-        """)
-
-        # Expander opsional bagi pengguna yang ingin membaca uraian naratif lengkap
-        with st.expander("📄 Tampilkan Laporan Diagnostik AI Naratif Lengkap (Versi Detail)", expanded=False):
-            st.html(f"""
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.7; color: #334155; font-size: 0.92rem;">
-                <p style="margin-bottom: 14px; text-align: justify;">
-                    Berdasarkan hasil pemeriksaan visual menggunakan model kecerdasan buatan (CNN MobileNetV2), tanaman pakcoy pada foto ini teridentifikasi berada pada fase <strong>{fase_display}</strong> (perkiraan umur tanam <strong>{umur_range}</strong>) dengan tingkat keyakinan AI sebesar <strong>{conf_val}%</strong> dan skor kesiapan panen <strong>{readiness_score}/100</strong>. Dari sisi ukuran fisik morfologi tanaman pakcoy asli, helaian daun utama memiliki <strong>panjang daun ± {leaf_len} cm</strong> (standar normal fase ini: {norm_len}) dan <strong>lebar daun ± {leaf_w} cm</strong> (standar normal: {norm_w}), sehingga menghasilkan <strong>luas permukaan per helai daun sekitar {leaf_area} cm²</strong>. Sementara itu, bentang <strong>diameter tajuk rumpun mencapai ± {canopy_diam} cm</strong> dengan tingkat kerapatan kanopi sebesar <strong>{canopy_cov}%</strong>, {canopy_status_text}.
-                </p>
-                <p style="margin-bottom: 14px; text-align: justify;">
-                    Dari hasil analisis spektrum warna daun, terdeteksi adanya <strong>gejala daun menguning (klorosis) sebesar {yellow_pct}%</strong> dengan <strong>indeks klorofil hijau {spad_val} SPAD</strong> (kepekatan warna hijau {green_density}%). {chlorosis_analysis}
-                </p>
-                <p style="margin-bottom: 14px; text-align: justify;">
-                    <strong>Saran Perawatan Air, Nutrisi &amp; Lingkungan:</strong> Untuk menjaga pertumbuhan pakcoy tetap optimal, pastikan kelembapan media tanam selalu berada pada rentang ideal <strong>55% hingga 75%</strong> dengan jadwal penyiraman teratur pada pagi hari (pukul 07:00–08:00) dan sore hari (pukul 16:00–17:00). Selanjutnya, berikan {nutrition_text} guna mempercepat pertambahan jumlah dan panjang helai daun. Jaga pH media tanam atau air nutrisi pada kisaran <strong>pH 6,0–6,8</strong> serta pertahankan suhu lingkungan di rentang <strong>20°C–30°C</strong> dengan paparan sinar matahari minimal 4–6 jam per hari.
-                </p>
-                <p style="margin-bottom: 0; text-align: justify;">
-                    <strong>Tindakan Pemeliharaan Tajuk &amp; Target Panen:</strong> Segera pangkas dan bersihkan helai daun bagian bawah yang tampak menguning atau layu menggunakan gunting bersih agar nutrisi terfokus ke daun utama dan tidak memicu kelembapan berlebih yang mengundang jamur. Periksa permukaan bawah daun secara rutin setiap pagi untuk mencegah serangan hama ulat daun (<em>Plutella xylostella</em>) dan kutu daun (<em>Aphids</em>) sejak dini, {harvest_target_text}.
-                </p>
             </div>
             """)
+        else:
+            render_pakcoy_growth_diagnosis(bio, res, selected_plant_id)
 
         st.markdown("<br/>", unsafe_allow_html=True)
 
@@ -533,39 +688,72 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
         col_bar1, col_bar2 = st.columns([1.1, 1.2], gap="large")
 
         with col_bar1:
-            st.html("""
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;">
-                <h4 style="margin: 0; color: #064e3b; font-size: 0.98rem; font-weight: 700;">
-                    📈 Probabilitas Klasifikasi Fase (CNN Softmax)
-                </h4>
-            </div>
-            """)
-            
-            prob_df = pd.DataFrame([
-                {"Fase Pertumbuhan": k, "Probabilitas (%)": v * 100}
-                for k, v in res["probabilities"].items()
-            ])
-            
-            fig_prob = px.bar(
-                prob_df,
-                x="Probabilitas (%)",
-                y="Fase Pertumbuhan",
-                orientation="h",
-                color="Probabilitas (%)",
-                color_continuous_scale="Greens",
-                text_auto=".1f"
-            )
-            fig_prob.update_layout(
-                template="plotly_white",
-                showlegend=False,
-                height=240,
-                margin=dict(l=0, r=25, t=10, b=10),
-                plot_bgcolor="rgba(248, 250, 252, 0.8)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                xaxis_title="Tingkat Keyakinan (%)",
-                yaxis_title=None
-            )
-            st.plotly_chart(fig_prob, use_container_width=True)
+            if not is_pakcoy:
+                st.html("""
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;">
+                    <h4 style="margin: 0; color: #b45309; font-size: 0.98rem; font-weight: 700;">
+                        📈 Distribusi Probabilitas Spesies (Ensemble AI)
+                    </h4>
+                </div>
+                """)
+                prob_df = pd.DataFrame([
+                    {"Spesies Tanaman": k, "Probabilitas (%)": v * 100}
+                    for k, v in res.get("species_probabilities", res["probabilities"]).items()
+                ])
+                fig_prob = px.bar(
+                    prob_df,
+                    x="Probabilitas (%)",
+                    y="Spesies Tanaman",
+                    orientation="h",
+                    color="Probabilitas (%)",
+                    color_continuous_scale="Oranges",
+                    text_auto=".1f"
+                )
+                fig_prob.update_layout(
+                    template="plotly_white",
+                    showlegend=False,
+                    height=240,
+                    margin=dict(l=0, r=25, t=10, b=10),
+                    plot_bgcolor="rgba(248, 250, 252, 0.8)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis_title="Tingkat Keyakinan (%)",
+                    yaxis_title=None
+                )
+                st.plotly_chart(fig_prob, use_container_width=True)
+            else:
+                st.html("""
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px;">
+                    <h4 style="margin: 0; color: #064e3b; font-size: 0.98rem; font-weight: 700;">
+                        📈 Probabilitas Klasifikasi Fase (CNN Softmax)
+                    </h4>
+                </div>
+                """)
+                
+                prob_df = pd.DataFrame([
+                    {"Fase Pertumbuhan": k, "Probabilitas (%)": v * 100}
+                    for k, v in res["probabilities"].items()
+                ])
+                
+                fig_prob = px.bar(
+                    prob_df,
+                    x="Probabilitas (%)",
+                    y="Fase Pertumbuhan",
+                    orientation="h",
+                    color="Probabilitas (%)",
+                    color_continuous_scale="Greens",
+                    text_auto=".1f"
+                )
+                fig_prob.update_layout(
+                    template="plotly_white",
+                    showlegend=False,
+                    height=240,
+                    margin=dict(l=0, r=25, t=10, b=10),
+                    plot_bgcolor="rgba(248, 250, 252, 0.8)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis_title="Tingkat Keyakinan (%)",
+                    yaxis_title=None
+                )
+                st.plotly_chart(fig_prob, use_container_width=True)
 
         with col_bar2:
             st.html("""
