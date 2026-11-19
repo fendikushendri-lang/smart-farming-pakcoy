@@ -9,9 +9,10 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import classification_report, accuracy_score, mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-BASE_DIR = r"C:\Users\Asus\.gemini\antigravity\scratch\smart-farming-pakcoy-new"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 DATA_DIR = os.path.join(BASE_DIR, "data")
+IMAGES_DIR = os.path.join(DATA_DIR, "images")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 def extract_visual_features(img_path):
@@ -51,20 +52,47 @@ def extract_visual_features(img_path):
 
 def train_visual_classifier():
     print("=== TRAINING ENHANCED COMPUTER VISION CLASSIFIER ===")
-    meta_path = os.path.join(DATA_DIR, "processed", "images_metadata.csv")
-    meta_df = pd.read_csv(meta_path)
-    
-    X, y = [], []
     classes = ["Masa_Pertumbuhan", "Mendekati_Panen", "Siap_Panen"]
     class_to_idx = {c: i for i, c in enumerate(classes)}
     
-    for _, row in meta_df.iterrows():
-        try:
-            feats = extract_visual_features(row['path'])
-            X.append(feats)
-            y.append(class_to_idx[row['class']])
-        except Exception as e:
-            print(f"Error reading {row['path']}: {e}")
+    X, y = [], []
+    import glob
+    found_count = 0
+    
+    # 1. Prioritaskan pemindaian langsung folder data/images agar foto baru langsung terikut
+    if os.path.isdir(IMAGES_DIR):
+        for c in classes:
+            folder = os.path.join(IMAGES_DIR, c)
+            if os.path.isdir(folder):
+                files = [f for f in glob.glob(os.path.join(folder, "*")) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+                print(f"Loading {len(files)} images for class '{c}' from disk...")
+                for fpath in files:
+                    try:
+                        feats = extract_visual_features(fpath)
+                        X.append(feats)
+                        y.append(class_to_idx[c])
+                        found_count += 1
+                    except Exception as e:
+                        print(f"Error reading {fpath}: {e}")
+                        
+    # 2. Fallback ke images_metadata.csv jika folder kosong
+    if found_count == 0:
+        meta_path = os.path.join(DATA_DIR, "processed", "images_metadata.csv")
+        if os.path.exists(meta_path):
+            meta_df = pd.read_csv(meta_path)
+            for _, row in meta_df.iterrows():
+                try:
+                    fpath = row['path']
+                    if not os.path.exists(fpath):
+                        fpath = os.path.join(IMAGES_DIR, row['class'], row['filename'])
+                    feats = extract_visual_features(fpath)
+                    X.append(feats)
+                    y.append(class_to_idx[row['class']])
+                    found_count += 1
+                except Exception as e:
+                    print(f"Error reading {row['path']}: {e}")
+                    
+    print(f"Total valid training images processed: {found_count}")
             
     X = np.array(X, dtype=np.float32)
     y = np.array(y, dtype=np.int64)
@@ -108,6 +136,8 @@ def train_visual_classifier():
 def train_timeseries_forecaster():
     print("\n=== TRAINING TIME-SERIES MULTIVARIATE FORECASTER (40 DAYS DATA) ===")
     csv_path = os.path.join(DATA_DIR, "processed", "timeseries_clean.csv")
+    if not os.path.exists(csv_path):
+        csv_path = os.path.join(DATA_DIR, "timeseries_clean.csv")
     df = pd.read_csv(csv_path)
     print(f"Loaded timeseries dataset: {len(df)} rows (Day {df['day'].min()} to Day {df['day'].max()})")
     
