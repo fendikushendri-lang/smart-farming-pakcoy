@@ -1,21 +1,25 @@
 {
-  "model_type": "Multi-Species Botanical Classifier (Soft Voting: RF + ExtraTrees + MLP)",
+  "model_type": "Hierarchical Multi-Species Botanical Ensemble (RF + ExtraTrees + MLP)",
   "classes": [
     "Pakcoy",
-    "Selada",
-    "Bayam",
+    "Bibit_Selada",
+    "Daun_Selada",
+    "Bibit_Bayam",
+    "Daun_Bayam",
     "Seledri",
     "Daun_Lainnya"
   ],
+  "cv_accuracy": 0.9567,
+  "cv_std": 0.0291,
+  "train_accuracy": 1.0,
+  "total_samples": 300,
   "class_counts": {
     "Pakcoy": 121,
-    "Selada": 44,
-    "Bayam": 16,
-    "Seledri": 18,
-    "Daun_Lainnya": 9
-  },
-  "cv_accuracy": 0.9952,
-  "cv_std": 0.0095,
-  "train_accuracy": 1.0,
-  "total_samples": 208
+    "Bibit_Selada": 25,
+    "Daun_Selada": 54,
+    "Bibit_Bayam": 25,
+    "Daun_Bayam": 25,
+    "Seledri": 25,
+    "Daun_Lainnya": 25
+  }
 }

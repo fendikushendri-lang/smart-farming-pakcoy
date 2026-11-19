@@ -1,0 +1,97 @@
+{
+    "accuracy": 0.8100558659217877,
+    "macro_avg": {
+        "precision": 0.706,
+        "recall": 0.6536134453781512,
+        "f1-score": 0.6696286729958418,
+        "support": 179.0
+    },
+    "weighted_avg": {
+        "precision": 0.8076536312849162,
+        "recall": 0.8100558659217877,
+        "f1-score": 0.804210400939786,
+        "support": 179.0
+    },
+    "per_class": {
+        "1_persemaian": {
+            "precision": 0.5,
+            "recall": 0.6,
+            "f1-score": 0.5454545454545454,
+            "support": 15.0
+        },
+        "2_vegetatif": {
+            "precision": 0.6666666666666666,
+            "recall": 0.42857142857142855,
+            "f1-score": 0.5217391304347826,
+            "support": 14.0
+        },
+        "3_baby_pakcoy": {
+            "precision": 0.7333333333333333,
+            "recall": 0.7857142857142857,
+            "f1-score": 0.7586206896551724,
+            "support": 14.0
+        },
+        "4_siap_panen": {
+            "precision": 0.75,
+            "recall": 0.5294117647058824,
+            "f1-score": 0.6206896551724138,
+            "support": 17.0
+        },
+        "5_bukan_pakcoy": {
+            "precision": 0.88,
+            "recall": 0.9243697478991597,
+            "f1-score": 0.9016393442622951,
+            "support": 119.0
+        }
+    },
+    "confusion_matrix": [
+        [
+            9,
+            2,
+            0,
+            0,
+            4
+        ],
+        [
+            3,
+            6,
+            1,
+            0,
+            4
+        ],
+        [
+            0,
+            0,
+            11,
+            1,
+            2
+        ],
+        [
+            0,
+            0,
+            3,
+            9,
+            5
+        ],
+        [
+            6,
+            1,
+            0,
+            2,
+            110
+        ]
+    ],
+    "categories": [
+        "1_persemaian",
+        "2_vegetatif",
+        "3_baby_pakcoy",
+        "4_siap_panen",
+        "5_bukan_pakcoy"
+    ],
+    "input_shape": [
+        224,
+        224,
+        3
+    ],
+    "model_architecture": "MobileNetV2 (Fine-Tuned 30 Layers) + Class Balancing"
+}
