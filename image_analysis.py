@@ -138,6 +138,27 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
         maturity_val = bio["maturity_pct"]
         fase_title = bio["fase_label"]
 
+        # Log activity CNN
+        img_key = str(image_to_analyze) if isinstance(image_to_analyze, str) else getattr(image_to_analyze, 'name', 'upload')
+        if f"logged_cnn_{img_key}" not in st.session_state:
+            try:
+                from services.data_service import add_activity_log
+                add_activity_log(
+                    "CNN",
+                    "CNN Image Analysis",
+                    "Berhasil",
+                    {
+                        "fase": res["predicted_label"],
+                        "keyakinan": f"{res['confidence']:.1f}%",
+                        "lebar_daun": f"{bio.get('leaf_width_cm', 5.0)} cm",
+                        "klorofil": f"{bio.get('spad_val', 41.3)} SPAD",
+                        "sampel": os.path.basename(img_key)
+                    }
+                )
+                st.session_state[f"logged_cnn_{img_key}"] = True
+            except Exception:
+                pass
+
         # --- TWO-COLUMN LAYOUT EXACTLY MATCHING USER SCREENSHOT ---
         col_input, col_bio = st.columns([1.05, 1.25], gap="large")
 

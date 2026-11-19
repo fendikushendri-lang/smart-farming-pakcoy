@@ -47,7 +47,27 @@ def render_prediction(selected_plant_id: str):
     daily_sum = forecast_result["daily_summary_df"]
     det_df = forecast_result["detailed_forecast_df"]
     
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    # Log activity LSTM
+    if f"logged_lstm_{selected_plant_id}" not in st.session_state:
+        try:
+            from services.data_service import add_activity_log
+            add_activity_log(
+                "LSTM",
+                "LSTM 4-Day Forecast",
+                "Berhasil",
+                {
+                    "batch": selected_plant_id,
+                    "horizon": "4 Hari (12 Timestep)",
+                    "model": "Bi-LSTM Multivariat",
+                    "status": "Pertumbuhan Monotonik Stabil",
+                    "hst_awal": int(latest_obs.get('dap', 10)) if latest_obs else 10
+                }
+            )
+            st.session_state[f"logged_lstm_{selected_plant_id}"] = True
+        except Exception:
+            pass
+    
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     local_img_dir = os.path.join(BASE_DIR, "data", "forecast_images")
 
     # --- 1. HEADER SECTION MATCHING USER SCREENSHOT ---
