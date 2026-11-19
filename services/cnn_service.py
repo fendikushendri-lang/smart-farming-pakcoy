@@ -190,13 +190,56 @@ def extract_detailed_biometrics(img_orig, pred_class, probs):
     brown_pct = float(np.mean(brown_mask) * 100.0)
     
     # 4. Morfologi Tajuk & Kontur Daun Fisik (Pencegah Kesalahan Baca Kecil Jadi Besar)
-    opened = binary_opening(green_mask, structure=np.ones((5, 5)))
-    labeled, num_blobs = label(opened)
+    # Analisis helai individu menggunakan pemisahan tepi internal (Sobel Edge Separation)
+    gray = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
+    gx = sobel(gray, axis=0)
+    gy = sobel(gray, axis=1)
+    grad = np.hypot(gx, gy)
+    edges = (grad > 0.11) & green_mask
+    leaf_bodies = green_mask & (~edges)
+    opened = binary_opening(leaf_bodies, structure=np.ones((2, 2)))
+    labeled, num_leaves = label(opened)
     
+    counts = np.bincount(labeled.flat)
+    blade_widths = []
+    if len(counts) > 1:
+        sizes = counts[1:]
+        valid_idx = np.where(sizes > 10)[0]
+        for idx in valid_idx:
+            coords = np.argwhere(labeled == (idx + 1))
+            min_y, min_x = coords.min(axis=0)
+            max_y, max_x = coords.max(axis=0)
+            blade_widths.append(min(max_x - min_x + 1, max_y - min_y + 1))
+            
+    if not blade_widths:
+        blade_widths = [6.0]
+        
+    med_blade_w = float(np.median(blade_widths))
+    p75_blade_w = float(np.percentile(blade_widths, 75))
+    max_blade_w = float(max(blade_widths))
+    n_separated_leaves = len(blade_widths)
+    
+    # Deteksi Fisiologis Kotiledon / Kecambah vs Daun Sejati
+    is_cotyledon_sprout = (
+        (n_separated_leaves >= 30 and p75_blade_w <= 14.0) or
+        (med_blade_w <= 7.0 and max_blade_w <= 35.0) or
+        (canopy_coverage < 15.0 and p75_blade_w <= 14.0)
+    )
+    is_early_seedling = (
+        not is_cotyledon_sprout and (
+            (p75_blade_w <= 18.0) or
+            (n_separated_leaves >= 20 and max_blade_w <= 45.0) or
+            (canopy_coverage < 25.0)
+        )
+    )
+    
+    # Deteksi Dominansi tajuk secara umum
+    opened_general = binary_opening(green_mask, structure=np.ones((5, 5)))
+    labeled_gen, num_blobs = label(opened_general)
     max_w, max_h, max_area = 0, 0, 0
     total_green = np.sum(green_mask)
     for b in range(1, num_blobs + 1):
-        coords = np.argwhere(labeled == b)
+        coords = np.argwhere(labeled_gen == b)
         area = len(coords)
         if area > max_area:
             max_area = area
@@ -262,20 +305,37 @@ def extract_detailed_biometrics(img_orig, pred_class, probs):
     # D. ESTIMASI LEBAR DAUN & PENENTUAN MASA PANEN
     # Mengukur lebar daun secara biologis sesuai fase fisiologis pakcoy
     if pred_class == "Masa_Pertumbuhan" or is_extreme_seedling:
-        base_w = 3.0 + (dominance * 1.5) + (min(canopy_coverage, 40.0) / 40.0) * 0.8
-        leaf_width_cm = round(float(np.clip(base_w, 2.5, 5.5)), 1)
-        estimasi_lebar = "Kecil (< 6 cm)"
-        lebar_desc = f"{leaf_width_cm} cm (Belum Siap Panen)"
-        status_panen_lebar = "BELUM SIAP PANEN"
-        rekomendasi_panen = "Fase vegetatif awal. Pertahankan nutrisi dan kelembaban 50-65%."
-        estimasi_sisa_hari = "15 - 25 Hari ke Depan"
+        if is_cotyledon_sprout:
+            # Fase Kotiledon / Kecambah Dini: 0.4 - 0.9 cm (< 1 cm)
+            leaf_width_cm = round(float(np.clip(0.4 + (p75_blade_w / 14.0) * 0.45, 0.4, 0.9)), 1)
+            estimasi_lebar = "Sangat Kecil (< 1 cm)"
+            lebar_desc = f"{leaf_width_cm} cm (Fase Kotiledon / Kecambah)"
+            status_panen_lebar = "BELUM SIAP PANEN (FASE KECAMBAH)"
+            rekomendasi_panen = "Fase kecambah/kotiledon (HST 1–7). Helai daun keping biji berukuran mini (< 1 cm). Pertahankan kelembapan media dengan spray halus dan pencahayaan lembut."
+            estimasi_sisa_hari = "30 - 35 Hari ke Depan"
+        elif is_early_seedling:
+            # Fase Daun Sejati Awal: 1.0 - 2.5 cm
+            leaf_width_cm = round(float(np.clip(1.0 + (p75_blade_w / 18.0) * 1.5, 1.0, 2.5)), 1)
+            estimasi_lebar = "Kecil (1.0 - 2.5 cm)"
+            lebar_desc = f"{leaf_width_cm} cm (Daun Sejati Awal)"
+            status_panen_lebar = "BELUM SIAP PANEN (SEMAI AWAL)"
+            rekomendasi_panen = "Fase semai daun sejati awal (HST 8–14). Daun mulai melebar. Berikan larutan nutrisi encer AB Mix 300–400 ppm (EC 0.6 mS/cm)."
+            estimasi_sisa_hari = "20 - 28 Hari ke Depan"
+        else:
+            # Fase Vegetatif Aktif: 2.6 - 5.5 cm
+            leaf_width_cm = round(float(np.clip(2.6 + (p75_blade_w / 35.0) * 2.8, 2.6, 5.5)), 1)
+            estimasi_lebar = "Kecil (2.6 - 5.5 cm)"
+            lebar_desc = f"{leaf_width_cm} cm (Vegetatif Aktif)"
+            status_panen_lebar = "BELUM SIAP PANEN (VEGETATIF)"
+            rekomendasi_panen = "Fase vegetatif aktif (HST 15–22). Bibit bersiap pindah tanam. Nutrisi AB Mix 600–800 ppm (EC 1.2–1.6 mS/cm)."
+            estimasi_sisa_hari = "15 - 20 Hari ke Depan"
     elif pred_class == "Mendekati_Panen":
         base_w = 6.2 + (dominance * 1.8) + (min(canopy_coverage, 70.0) / 70.0) * 1.4
         leaf_width_cm = round(float(np.clip(base_w, 6.0, 9.4)), 1)
         estimasi_lebar = "Sedang (6 - 9.5 cm)"
         lebar_desc = f"{leaf_width_cm} cm (Jendela Pra-Panen)"
         status_panen_lebar = "MENDEKATI PANEN"
-        rekomendasi_panen = "Daun mulai melebar sempurna. Persiapkan jadwal panen dalam 3-7 hari."
+        rekomendasi_panen = "Daun mulai melebar sempurna (fase pra-panen). Persiapkan jadwal panen dalam 3-7 hari."
         estimasi_sisa_hari = "3 - 7 Hari ke Depan"
     else:
         base_w = 10.2 + (dominance * 1.6) + (min(canopy_coverage, 100.0) / 100.0) * 1.2
@@ -283,7 +343,7 @@ def extract_detailed_biometrics(img_orig, pred_class, probs):
         estimasi_lebar = "Lebar (≥ 10 cm)"
         lebar_desc = f"{leaf_width_cm} cm (Standar Komersial Terpenuhi)"
         status_panen_lebar = "SIAP PANEN (MATANG OPTIMAL)"
-        rekomendasi_panen = "Lebar daun telah melampaui standar panen (≥ 10 cm). Segera panen hari ini untuk menjaga kualitas renyah dan mencegah bolting."
+        rekomendasi_panen = "Lebar daun telah melampaui standar panen komersial (≥ 10 cm). Segera panen hari ini untuk menjaga kualitas renyah dan mencegah bolting."
         estimasi_sisa_hari = "0 Hari (Siap Panen Hari Ini!)"
 
     target_lebar_panen = 10.0  # Standar acuan komersial pakcoy matang sempurna

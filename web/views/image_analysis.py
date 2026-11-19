@@ -326,23 +326,49 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
         green_density = bio.get("green_density", 73)
         
         if pred_cls == "Masa_Pertumbuhan":
-            fase_display = "Masa Pertumbuhan"
-            umur_range = "Hari ke-7 s.d. Hari ke-18"
+            leaf_w = bio.get("leaf_width_cm", 0.7)
             conf_val = round(res.get("confidence", 89.0))
-            leaf_w = bio.get("leaf_width_cm", 4.5)
-            readiness_score = min(max(int(round(6 + (leaf_w - 2.5) * 4.0)), 6), 30)
-            norm_len = "6.5–11.8 cm"
-            norm_w = "4.0–7.2 cm"
-            leaf_len = round(leaf_w * 1.8, 1)
-            leaf_area = round(leaf_w * leaf_len * 0.673, 1)
-            canopy_diam = round(leaf_len * 1.25, 1)
+            if leaf_w < 1.0:
+                fase_display = "Masa Pertumbuhan (Kotiledon / Kecambah)"
+                umur_range = "Hari ke-1 s.d. Hari ke-7 (Kecambah Dini)"
+                readiness_score = min(max(int(round((leaf_w / 10.0) * 50.0)), 4), 10)
+                norm_len = "0.8–2.0 cm"
+                norm_w = "< 1.0 cm (Fase Kotiledon)"
+                leaf_len = round(leaf_w * 1.5, 1)
+                leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+                canopy_diam = round(leaf_len * 1.4, 1)
+                canopy_status_text = "yang menunjukkan helai daun masih berupa keping klorofil lembaga (kotiledon) awal perkecambahan sebelum terbentuk daun sejati"
+                nutrition_text = "perlakuan semai lembut (air murni atau larutan encer <strong>AB Mix 200–300 ppm</strong> atau <strong>EC 0,4–0,6 mS/cm</strong>) dengan penyemprotan kabut halus agar batang semai tidak patah"
+                harvest_target_text = "sehingga bibit dapat tumbuh kokoh dan siap dipindah tanam pada Hari ke-14 s.d. 18 menuju panen optimal di <strong>Hari ke-35</strong>"
+            elif leaf_w <= 2.5:
+                fase_display = "Masa Pertumbuhan (Semai Daun Sejati Awal)"
+                umur_range = "Hari ke-8 s.d. Hari ke-14"
+                readiness_score = min(max(int(round(8 + (leaf_w - 1.0) * 8.0)), 8), 22)
+                norm_len = "2.0–4.8 cm"
+                norm_w = "1.0–2.5 cm (Daun Sejati Awal)"
+                leaf_len = round(leaf_w * 1.7, 1)
+                leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+                canopy_diam = round(leaf_len * 1.3, 1)
+                canopy_status_text = "yang menandakan daun sejati ke-1 hingga ke-3 mulai mekar dengan tangkai semai yang mulai mengokoh"
+                nutrition_text = "nutrisi pengenalan vegetatif (larutan <strong>AB Mix kepekatan 400–600 ppm</strong> atau <strong>EC 0,8–1,2 mS/cm</strong>)"
+                harvest_target_text = "menuju fase pembesaran daun sejati dan siap panen pada <strong>Hari ke-32 s.d. Hari ke-35</strong>"
+            else:
+                fase_display = "Masa Pertumbuhan (Vegetatif Aktif)"
+                umur_range = "Hari ke-15 s.d. Hari ke-22"
+                readiness_score = min(max(int(round(22 + (leaf_w - 2.5) * 8.0)), 22), 48)
+                norm_len = "5.0–11.0 cm"
+                norm_w = "2.6–5.5 cm (Vegetatif Aktif)"
+                leaf_len = round(leaf_w * 1.8, 1)
+                leaf_area = round(leaf_w * leaf_len * 0.673, 1)
+                canopy_diam = round(leaf_len * 1.25, 1)
+                canopy_status_text = "yang menunjukkan bahwa susunan roset daun masih memiliki celah antar-tangkai karena tanaman sedang aktif melebarkan helai daun muda"
+                nutrition_text = "nutrisi pertumbuhan vegetatif (larutan <strong>AB Mix kepekatan 600–900 ppm</strong> atau <strong>EC 1,2–1,8 mS/cm</strong> untuk hidroponik, maupun pupuk cair kaya Nitrogen untuk media tanah)"
+                harvest_target_text = "sehingga tanaman dapat tumbuh mulus hingga waktu panen optimal pada <strong>Hari ke-30</strong>"
+
             canopy_cov = int(round(bio.get("luas_kanopi_pct", 32.0)))
             yellow_pct = round(bio.get("yellow_pct", 17.8), 1)
             spad_val = round(bio.get("spad_val", 41.3), 1)
             green_density = bio.get("green_density", 73)
-            canopy_status_text = "yang menunjukkan bahwa susunan roset daun masih memiliki celah antar-tangkai karena tanaman sedang aktif melebarkan helai daun muda"
-            nutrition_text = "nutrisi pertumbuhan vegetatif (larutan <strong>AB Mix kepekatan 600–900 ppm</strong> atau <strong>EC 1,2–1,8 mS/cm</strong> untuk hidroponik, maupun pupuk cair kaya Nitrogen untuk media tanah)"
-            harvest_target_text = "sehingga tanaman dapat tumbuh mulus hingga waktu panen optimal pada <strong>Hari ke-30</strong>"
         elif pred_cls == "Mendekati_Panen":
             fase_display = "Mendekati Panen (Pra-Panen)"
             umur_range = "Hari ke-22 s.d. Hari ke-32"
@@ -375,11 +401,36 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
             klorosis_chip = "✅ Status Daun: Sehat Prima (Bebas Klorosis)"
             chlorosis_analysis = "Persentase warna kuning di bawah 8% menandakan bahwa pigmen klorofil berada dalam konsentrasi prima untuk asimilasi fotosintesis. Pada budidaya pakcoy, kondisi warna daun yang hijau pekat merata ini membuktikan kecukupan unsur hara makro Nitrogen (N) dan Magnesium (Mg) serta aerasi media tanam yang terjaga sangat baik tanpa mengalami klorosis."
 
+        if pred_cls == "Masa_Pertumbuhan":
+            if leaf_w < 1.0:
+                tajuk_chip = "< 3.5 cm (Kotiledon)"
+                nutrition_brief = "Air murni / AB Mix encer 200–300 ppm"
+                harvest_target_brief = "Hari ke-30 s.d. 35 (Fase Kotiledon)"
+            elif leaf_w <= 2.5:
+                tajuk_chip = "3.5–7.0 cm (Semai Awal)"
+                nutrition_brief = "AB Mix encer 400–600 ppm"
+                harvest_target_brief = "Hari ke-30 s.d. 35 (Semai Awal)"
+            else:
+                tajuk_chip = "7.0–11.0 cm"
+                nutrition_brief = "AB Mix 600–900 ppm (EC 1.2–1.8 mS/cm)"
+                harvest_target_brief = "Hari ke-28 s.d. 32"
+            klorosis_brief = "Penurunan klorofil ringan (evaluasi N/Mg & drainase)" if yellow_pct > 8.0 else "Klorofil optimal, fotosintesis prima"
+        elif pred_cls == "Mendekati_Panen":
+            tajuk_chip = "12.0–16.5 cm"
+            nutrition_brief = "AB Mix 900–1.200 ppm (EC 1.8–2.4 mS/cm)"
+            harvest_target_brief = "3–7 hari lagi (Hari ke-35 s.d. 38)"
+            klorosis_brief = "Klorosis wajar daun tua, kurangi kelembapan" if yellow_pct > 8.0 else "Daun sangat prima & kokoh"
+        else:
+            tajuk_chip = "16.0–22.0 cm"
+            nutrition_brief = "Bilas air bersih / AB Mix 600–800 ppm"
+            harvest_target_brief = "Hari ke-38 s.d. 40 (Siap Panen Hari Ini!)"
+            klorosis_brief = "Klorosis normal pada daun basal luar" if yellow_pct > 8.0 else "Roset tebal sempurna & segar"
+
         # Quick metric summary chips exactly as shown in screenshot
         st.html(f"""
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; margin-bottom: 12px;">
             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 700; color: #0f172a;">📐 Standar tajuk:</span> 9.5–14.5 cm
+                <span style="font-weight: 700; color: #0f172a;">📐 Standar tajuk:</span> {tajuk_chip}
             </div>
             <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #475569; display: flex; align-items: center; gap: 6px;">
                 <span style="font-weight: 700; color: #047857;">🌿 Kepekatan hijau {green_density}%</span> • Tutupan {canopy_cov}%
@@ -392,21 +443,6 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
             </div>
         </div>
         """)
-
-        # Ringkasan cepat untuk versi ringkas
-        if pred_cls == "Masa_Pertumbuhan":
-            nutrition_brief = "AB Mix 600–900 ppm (EC 1.2–1.8 mS/cm)"
-            harvest_target_brief = "Hari ke-30 s.d. 35"
-            klorosis_brief = "Penurunan klorofil ringan (evaluasi N/Mg & drainase)" if yellow_pct > 8.0 else "Klorofil optimal, fotosintesis prima"
-        elif pred_cls == "Mendekati_Panen":
-            nutrition_brief = "AB Mix 900–1.200 ppm (EC 1.8–2.4 mS/cm)"
-            harvest_target_brief = "3–7 hari lagi (Hari ke-35 s.d. 38)"
-            klorosis_brief = "Klorosis wajar daun tua, kurangi kelembapan" if yellow_pct > 8.0 else "Daun sangat prima & kokoh"
-        else:
-            nutrition_brief = "Bilas air bersih / AB Mix 600–800 ppm"
-            harvest_target_brief = "Hari ke-38 s.d. 40 (Siap Panen Hari Ini!)"
-            klorosis_brief = "Klorosis normal pada daun basal luar" if yellow_pct > 8.0 else "Roset tebal sempurna & segar"
-
         # Full-width Diagnostic Card (Versi Singkat, Padat & Terstruktur)
         st.html(f"""
         <div style="background: #ffffff; border: 1.5px solid #10b981; border-left: 6px solid #059669; border-radius: 14px; padding: 20px 24px; box-shadow: 0 4px 16px rgba(0,0,0,0.03); margin-top: 10px; margin-bottom: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
