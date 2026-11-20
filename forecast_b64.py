@@ -25,22 +25,60 @@ FORECAST_IMAGES_BY_PHASE = {
     ],
 }
 
-def get_forecast_image_for_dap(dap_val: int, step_idx: int) -> str:
+def get_plant_phase_key(dap_val: int) -> str:
+    if dap_val <= 14:
+        return "semai"
+    elif dap_val <= 29:
+        return "vegetatif"
+    elif dap_val <= 35:
+        return "pra_panen"
+    else:
+        return "siap_panen"
+
+def get_forecast_image_for_dap(dap_val: int, step_idx: int = 0) -> str:
     """
     Mengambil foto visualisasi kondisi tanaman pakcoy yang tepat 
-    sesuai fase usia pertumbuhan tanaman (HST) dan urutan hari proyeksi (+1 s.d. +4).
+    sesuai fase umur tanaman aktual (HST 1 s.d. 40).
     """
-    idx = min(max(step_idx, 0), 3)
-    
-    if dap_val <= 16:
-        # Fase Semai / Bibit Awal
-        return FORECAST_IMAGES_BY_PHASE["semai"][idx]
-    elif dap_val <= 28:
-        # Fase Vegetatif Aktif
-        return FORECAST_IMAGES_BY_PHASE["vegetatif"][idx]
+    if dap_val <= 14:
+        phase = "semai"
+        if dap_val <= 2:
+            idx = 0
+        elif dap_val <= 3:
+            idx = 1
+        elif dap_val <= 7:
+            idx = 2
+        else:
+            idx = 3
+    elif dap_val <= 29:
+        phase = "vegetatif"
+        if dap_val <= 15:
+            idx = 0
+        elif dap_val <= 18:
+            idx = 1
+        elif dap_val <= 23:
+            idx = 2
+        else:
+            idx = 3
     elif dap_val <= 35:
-        # Fase Mendekati Panen (Pra-Panen)
-        return FORECAST_IMAGES_BY_PHASE["pra_panen"][idx]
+        phase = "pra_panen"
+        if dap_val <= 31:
+            idx = 0
+        elif dap_val <= 32:
+            idx = 1
+        elif dap_val <= 34:
+            idx = 2
+        else:
+            idx = 3
     else:
-        # Fase Siap Panen (Matang Optimal >= 36 HST)
-        return FORECAST_IMAGES_BY_PHASE["siap_panen"][idx]
+        phase = "siap_panen"
+        if dap_val <= 37:
+            idx = 0
+        elif dap_val <= 38:
+            idx = 1
+        elif dap_val <= 39:
+            idx = 2
+        else:
+            idx = 3
+
+    return FORECAST_IMAGES_BY_PHASE[phase][idx]

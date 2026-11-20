@@ -2,8 +2,9 @@ import streamlit as st
 import os
 import pandas as pd
 import plotly.graph_objects as go
+from datetime import datetime
 from services.lstm_service import predict_growth_4days
-from services.data_service import get_all_plants, get_latest_observation, get_growth_history
+from services.data_service import get_all_plants, get_latest_observation, get_growth_history, add_activity_log
 
 try:
     from data.forecast_b64 import get_forecast_image_for_dap
@@ -15,9 +16,9 @@ except Exception:
             return ""
 
 def get_plant_phase_key(dap_val: int) -> str:
-    if dap_val <= 16:
+    if dap_val <= 14:
         return "semai"
-    elif dap_val <= 28:
+    elif dap_val <= 29:
         return "vegetatif"
     elif dap_val <= 35:
         return "pra_panen"
@@ -92,10 +93,53 @@ def render_prediction(selected_plant_id: str):
             </div>
         </div>
         """)
+    reload_key = f"last_reload_{selected_plant_id}"
+    last_reload_time = st.session_state.get(reload_key, "")
+    reload_seed = st.session_state.get(f"lstm_seed_{selected_plant_id}", 0)
+
     with c_head2:
         st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
         if st.button("🔄 Muat Ulang", key="btn_reload_pred", use_container_width=True):
+            # 1. Reset in-memory model & scaler di LSTM service
+            try:
+                import services.lstm_service as ls
+                ls._model = None
+                ls._scaler = None
+            except Exception:
+                pass
+            
+            # 2. Update seed rotasi gambar sampel dan waktu pembaruan
+            new_seed = reload_seed + 1
+            st.session_state[f"lstm_seed_{selected_plant_id}"] = new_seed
+            now_str = datetime.now().strftime("%H:%M:%S WIB")
+            st.session_state[reload_key] = now_str
+            
+            # 3. Log aktivitas ke Histori (Kategori LSTM)
+            try:
+                add_activity_log(
+                    "LSTM",
+                    f"Muat Ulang Prediksi {selected_plant_id}",
+                    "Berhasil",
+                    {
+                        "batch": selected_plant_id,
+                        "waktu": now_str,
+                        "aksi": "Pembaruan Telemetri & Refresh Model Bi-LSTM",
+                        "siklus": new_seed
+                    }
+                )
+            except Exception:
+                pass
+                
+            # 4. Tandai flag notifikasi berhasil
+            st.session_state[f"reloaded_notice_{selected_plant_id}"] = True
             st.rerun()
+
+        if last_reload_time:
+            st.markdown(f"<div style='text-align: right; font-size: 0.74rem; color: #64748b; margin-top: 3px;'>🕒 Diperbarui: <strong>{last_reload_time}</strong></div>", unsafe_allow_html=True)
+
+    if st.session_state.pop(f"reloaded_notice_{selected_plant_id}", False):
+        st.toast(f"✅ Data telemetri dan prediksi LSTM untuk {selected_plant_id} berhasil dimuat ulang ({last_reload_time})!", icon="🔄")
+        st.success(f"🔄 **Data Berhasil Dimuat Ulang!** Model Bi-LSTM telah memperbarui proyeksi 4 hari ke depan berdasarkan telemetri sensorik terkini ({last_reload_time}).")
 
     # --- 2. 4-DAY FORECAST CARDS WITH REAL PLANT PHOTOS ---
     f_cols = st.columns(4)
@@ -115,11 +159,21 @@ def render_prediction(selected_plant_id: str):
         progress_val = min(max(mat_num, 5.0), 100.0)
         
         # Dynamic phase badge based on actual plant day (HST)
-        if target_dap < 30:
-            phase_text = "Masa Pertumbuhan"
+        if target_dap <= 4:
+            phase_text = "Fase Semai"
+            badge_bg = "#f3e8ff"
+            badge_color = "#7e22ce"
+            badge_border = "#d8b4fe"
+        elif target_dap <= 14:
+            phase_text = "Pembibitan"
             badge_bg = "#eff6ff"
             badge_color = "#2563eb"
             badge_border = "#bfdbfe"
+        elif target_dap < 30:
+            phase_text = "Masa Pertumbuhan"
+            badge_bg = "#ecfdf5"
+            badge_color = "#047857"
+            badge_border = "#a7f3d0"
         elif target_dap < 36:
             phase_text = "Mendekati Panen"
             badge_bg = "#fef3c7"
@@ -127,17 +181,17 @@ def render_prediction(selected_plant_id: str):
             badge_border = "#fde68a"
         else:
             phase_text = "Siap Panen"
-            badge_bg = "#ecfdf5"
-            badge_color = "#059669"
-            badge_border = "#a7f3d0"
+            badge_bg = "#dcfce7"
+            badge_color = "#15803d"
+            badge_border = "#86efac"
 
-        # Determine dynamic plant image matching the specific HST phase
+        # Determine dynamic plant image matching the specific HST phase and reload seed
         phase_key = get_plant_phase_key(target_dap)
-        img_src = get_forecast_image_for_dap(target_dap, i)
+        img_src = get_forecast_image_for_dap(target_dap, (i + reload_seed) % 4)
         
         # Robust fallback: check local forecast_images or raw dataset folders on Cloud
         if not img_src:
-            img_candidate = os.path.join(local_img_dir, f"{phase_key}_{i+1}.jpg")
+            img_candidate = os.path.join(local_img_dir, f"{phase_key}_{((i + reload_seed) % 4) + 1}.jpg")
             if os.path.exists(img_candidate):
                 import base64
                 with open(img_candidate, "rb") as f_img:
@@ -153,7 +207,7 @@ def render_prediction(selected_plant_id: str):
                 import glob
                 found = glob.glob(os.path.join(BASE_DIR, cat_name, "*.jpg")) or glob.glob(os.path.join(BASE_DIR, "data", "images", cat_name, "*.jpg"))
                 if found:
-                    idx_pick = (i * 3) % len(found)
+                    idx_pick = (i * 3 + reload_seed) % len(found)
                     import base64
                     with open(found[idx_pick], "rb") as f_img:
                         img_src = f"data:image/jpeg;base64,{base64.b64encode(f_img.read()).decode('utf-8')}"
