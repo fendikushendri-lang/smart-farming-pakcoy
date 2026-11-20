@@ -49,15 +49,26 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
         "PCK-FULL40": os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg"),
     }
     
-    # Default sample image
+    # Default sample image dinamis sesuai umur HST batch yang dipilih (PCK-001 s.d. PCK-040)
     default_sample = plant_authentic_samples.get(selected_plant_id)
     if not default_sample or not os.path.isfile(default_sample):
-        primary_sample = os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg")
-        if os.path.isfile(primary_sample):
-            default_sample = primary_sample
+        from services.data_service import get_latest_observation
+        obs = get_latest_observation(selected_plant_id)
+        dap_num = obs.get("dap", 20) if obs else 20
+        if dap_num <= 4:
+            cand = os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_040_cotyledon.jpg")
+        elif dap_num <= 25:
+            cand = os.path.join(sample_dir, "Masa_Pertumbuhan", "Masa_Pertumbuhan_006.jpg")
+        elif dap_num <= 34:
+            cand = os.path.join(sample_dir, "Mendekati_Panen", "Mendekati_Panen_039.jpg")
         else:
-            samples_found = glob.glob(os.path.join(sample_dir, "**", "*.jpg"), recursive=True) if os.path.isdir(sample_dir) else []
-            default_sample = samples_found[0] if samples_found else None
+            cand = os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg")
+            
+        if os.path.isfile(cand):
+            default_sample = cand
+        else:
+            primary_sample = os.path.join(sample_dir, "Siap_Panen", "Siap_Panen_080.jpg")
+            default_sample = primary_sample if os.path.isfile(primary_sample) else None
 
     # Kelompok folder sampel untuk memudahkan pengujian multi-spesies & fase pakcoy
     sample_groups = {
@@ -153,6 +164,15 @@ def render_image_analysis(selected_plant_id: str = "PCK-001"):
                 st.session_state[f"logged_cnn_{img_key}"] = True
             except Exception:
                 pass
+
+        # Simpan hasil analisis CNN ke session_state untuk grounding Asisten AI
+        st.session_state["latest_cnn_result"] = {
+            "species": spec_name,
+            "stage": res.get("predicted_label", "Masa Pertumbuhan"),
+            "leaf_width": f"{bio.get('leaf_width_cm', 0.0):.1f}",
+            "confidence": f"{res.get('confidence', 90.0):.1f}%",
+            "status": "Siap Panen" if bio.get("harvest_ready") else "Masa Pertumbuhan"
+        }
 
         # --- TWO-COLUMN LAYOUT ---
         col_input, col_bio = st.columns([1.05, 1.25], gap="large")

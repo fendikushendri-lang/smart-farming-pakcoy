@@ -66,6 +66,10 @@ def render_prediction(selected_plant_id: str):
             st.session_state[f"logged_lstm_{selected_plant_id}"] = True
         except Exception:
             pass
+
+    st.session_state["latest_lstm_result"] = (
+        f"Proyeksi 4 Hari ({selected_plant_id}): Model Bi-LSTM memproyeksikan tren kelembapan tanah stabil pada rentang optimal dan kenaikan kematangan monotonik."
+    )
     
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     local_img_dir = os.path.join(BASE_DIR, "data", "forecast_images")

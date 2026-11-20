@@ -2,7 +2,12 @@ import streamlit as st
 import os
 from database.db import get_connection
 from populate_db import populate
-from ai.gemini_service import test_gemini_connection, AVAILABLE_GEMINI_MODELS
+from ai.gemini_service import (
+    test_gemini_connection,
+    AVAILABLE_GEMINI_MODELS,
+    get_gemini_api_key,
+    save_gemini_api_key
+)
 
 def render_settings():
     st.html("""
@@ -29,10 +34,7 @@ def render_settings():
         cerdas, dan memiliki kuota gratis untuk analisis pertanian cerdas pakcoy.
         """)
         
-        current_gemini_key = st.session_state.get(
-            "gemini_api_key",
-            os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
-        )
+        current_gemini_key = get_gemini_api_key()
         
         c_key, c_model = st.columns([2.5, 1.5])
         with c_key:
@@ -40,27 +42,27 @@ def render_settings():
                 "Google AI Studio API Key (AIzaSy...)",
                 value=current_gemini_key,
                 type="password",
-                help="Masukkan API key dari Google AI Studio. Tersimpan aman di sesi memori aplikasi."
+                help="Masukkan API key dari Google AI Studio. Tersimpan aman di sesi memori aplikasi dan file .env lokal."
             )
         with c_model:
             model_options = st.session_state.get("discovered_gemini_models", AVAILABLE_GEMINI_MODELS)
-            current_g_model = st.session_state.get("gemini_model", "gemini-2.0-flash")
-            model_idx = model_options.index(current_g_model) if current_g_model in model_options else 0
+            current_g_model = st.session_state.get("gemini_model", "gemini-3-flash-preview")
+            if current_g_model not in model_options:
+                current_g_model = model_options[0]
+            model_idx = model_options.index(current_g_model)
             gemini_model_choice = st.selectbox(
                 "Pilihan Model Gemini",
                 model_options,
                 index=model_idx,
-                help="Rekomendasi: gemini-2.0-flash (Generasi terbaru, super cepat, dan stabil)."
+                help="Rekomendasi: gemini-3-flash-preview (Generasi mutakhir, super cepat, cerdas, dan stabil)."
             )
             
         c_btn1, c_btn2, c_btn3 = st.columns([1.5, 1.5, 3])
         with c_btn1:
             if st.button("💾 Simpan Pengaturan Gemini", type="primary", use_container_width=True):
-                st.session_state["gemini_api_key"] = gemini_key_input.strip()
+                save_gemini_api_key(gemini_key_input.strip())
                 st.session_state["gemini_model"] = gemini_model_choice
                 st.session_state["active_ai_provider"] = "gemini"
-                os.environ["GEMINI_API_KEY"] = gemini_key_input.strip()
-                os.environ["GOOGLE_API_KEY"] = gemini_key_input.strip()
                 try:
                     from services.data_service import add_activity_log
                     add_activity_log(
