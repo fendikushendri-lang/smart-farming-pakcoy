@@ -13,6 +13,7 @@ from populate_db import populate
 from services.data_service import get_all_plants, get_latest_observation
 
 import importlib
+import populate_db
 import web.sensor_panels
 import web.views.dashboard
 import web.views.image_analysis
@@ -25,6 +26,7 @@ import services.lstm_service
 import services.cnn_service
 
 # Ensure views, services, and sensor panels are always loaded fresh from disk
+importlib.reload(populate_db)
 importlib.reload(ai.gemini_service)
 importlib.reload(services.lstm_service)
 importlib.reload(services.cnn_service)
@@ -104,6 +106,14 @@ with st.sidebar:
         else:
             pump_on = (latest.get('pump_status') == 'ON') or (cur_moist < 50.0)
             
+        # Simpan konteks sensorik real-time ke st.session_state untuk AI dan view lainnya
+        st.session_state["active_batch_id"] = selected_plant
+        st.session_state["active_soil_moisture"] = cur_moist
+        st.session_state["active_temperature"] = cur_temp
+        st.session_state["active_dap"] = dap_val
+        st.session_state["active_pump_status"] = "ON" if pump_on else "OFF"
+        st.session_state["active_soil_condition"] = latest.get('soil_condition', 'Optimal')
+            
         pump_badge_text = "POMPA: AKTIF (MENYIRAM 💧)" if pump_on else "POMPA: STANDBY (OFF ⏸️)"
         pump_bg = "#ecfdf5" if pump_on else "#f8fafc"
         pump_border = "#10b981" if pump_on else "#cbd5e1"
@@ -136,6 +146,21 @@ with st.sidebar:
         </div>
         """)
         
+    # --- WIDGET API KEY GEMINI DI SIDEBAR JIKA BELUM TERISI ---
+    from ai.gemini_service import get_gemini_api_key, save_gemini_api_key
+    sb_gemini_key = get_gemini_api_key()
+    if not sb_gemini_key:
+        with st.expander("🔑 Setup Gemini API Key", expanded=False):
+            st.caption("Tempel API Key Google AI Studio Anda:")
+            sb_k_input = st.text_input("Gemini Key:", type="password", key="sidebar_gemini_key_input", placeholder="AIzaSy...", label_visibility="collapsed")
+            if st.button("Simpan Key", key="sidebar_save_key_btn", use_container_width=True):
+                if sb_k_input.strip():
+                    save_gemini_api_key(sb_k_input.strip())
+                    st.success("API Key disimpan!")
+                    st.rerun()
+                else:
+                    st.warning("Masukkan API key.")
+                    
     st.markdown("<p style='font-size: 0.8rem; font-weight: 700; color: #047857; margin: 12px 0 6px 2px; text-transform: uppercase;'>🧭 Menu Navigasi:</p>", unsafe_allow_html=True)
     
     # STRUKTUR MENU NAVIGASI SESUAI INSTRUKSI:

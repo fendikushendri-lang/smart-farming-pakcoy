@@ -99,18 +99,14 @@ def populate(force=False):
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Deteksi otomatis apakah urutan tanaman sudah benar dan lengkap
+    # Deteksi otomatis apakah urutan tanaman sudah benar dan lengkap (40 Batch PCK-001 s.d. PCK-040)
     needs_repopulate = force
     try:
-        cursor.execute("SELECT plant_id, current_dap FROM plants WHERE plant_id IN ('PCK-001', 'PCK-002', 'PCK-003', 'PCK-004', 'PCK-005')")
-        p_dict = dict(cursor.fetchall())
-        if (p_dict.get('PCK-001') != 10 or 
-            p_dict.get('PCK-002') != 20 or 
-            p_dict.get('PCK-003') != 30 or 
-            p_dict.get('PCK-004') != 36 or 
-            p_dict.get('PCK-005') != 40):
+        cursor.execute("SELECT COUNT(*) FROM plants WHERE plant_id LIKE 'PCK-%'")
+        p_count = cursor.fetchone()[0]
+        if p_count < 40:
             needs_repopulate = True
-            print("Urutan kronologis tanaman versi lama terdeteksi tidak sesuai. Mereset otomatis...")
+            print(f"Jumlah batch terdeteksi ({p_count}) kurang dari 40. Memperbarui ke 40 Batch lengkap...")
     except Exception:
         needs_repopulate = True
 
@@ -126,7 +122,7 @@ def populate(force=False):
         conn.close()
         return
 
-    print("Melakukan sinkronisasi & populasi database urutan kronologis PCK-001 (10 HST) s.d. PCK-005 (40 HST)...")
+    print("Melakukan sinkronisasi & populasi database 40 Batch PCK-001 (1 HST) s.d. PCK-040 (40 HST)...")
     
     # 1. Bersihkan tabel lama
     cursor.execute("DROP TABLE IF EXISTS observations")
@@ -167,36 +163,67 @@ def populate(force=False):
     cursor.execute("DELETE FROM alerts")
     conn.commit()
 
-    # 2. Hasilkan dataset telemetri
+    # 2. Hasilkan dataset telemetri 40 hari (1.600 observasi)
     df = generate_telemetry_dataset()
     
-    # 3. Konfigurasi tanaman/batch 40 HST (Urutan Kronologis Resmi)
-    plants = [
-        ("PCK-001", "Pakcoy Semai Polybag A-1 (Semai 10 HST)", "Batch-2026-SEM-01", "Pakcoy Green Fortune", "2026-10-20", 10, 10, "Optimal", "Fase semai dan persemaian awal (10 HST). Daun kotiledon tumbuh seragam 2-4 helai."),
-        ("PCK-002", "Pakcoy Polybag B-2 (Vegetatif 20 HST)", "Batch-2026-SUB-02", "Pakcoy Nauli F1", "2026-10-10", 20, 20, "Optimal", "Fase vegetatif aktif (20 HST) lebar daun 5.8 cm, irigasi pompa otomatis terjaga."),
-        ("PCK-003", "Pakcoy DWC C-1 (Pre-Harvest 30 HST)", "Batch-2026-DWC-03", "Pakcoy Green Fortune", "2026-09-30", 30, 30, "Optimal", "Fase mendekati panen (30 HST), tajuk roset daun rimbun 8.5 cm."),
-        ("PCK-004", "Pakcoy Vertikal Tower D-2 (Siap Panen 36 HST)", "Batch-2026-AERO-04", "Pakcoy Nauli F1", "2026-09-24", 36, 36, "Harvest Ready", "Fase siap panen komersial optimal (36 HST), lebar daun 10.5 cm siap petik prima."),
-        ("PCK-005", "Pakcoy Smart IoT E-1 (Batas Panen 40 HST)", "Batch-2026-IoT-05", "Pakcoy Green Fortune", "2026-09-20", 40, 40, "Harvest Ready", "Siklus batas panen maksimal pakcoy 40 HST, lebar daun 11.2 cm (Standar pasar komersial terpenuhi)."),
-        ("PCK-FULL40", "Pakcoy Siklus Lengkap 40 Hari", "Batch-2026-FULL-40D", "Pakcoy Green Fortune", "2026-09-20", 40, 40, "Harvest Ready", "Siklus pengamatan kontinu 40 hari penuh (1.600 observasi lengkap, Day 1-40) mencakup seluruh tahapan budidaya."),
-    ]
+    # 3. Konfigurasi 40 Tanaman / Batch (PCK-001 s.d. PCK-040) & PCK-FULL40
+    plants = []
+    for day in range(1, 41):
+        pid = f"PCK-{day:03d}"
+        if day <= 4:
+            stage = "Fase Semai"
+            status = "Optimal"
+            desc = f"Fase semai dan perkecambahan awal ({day} HST). Daun kotiledon tumbuh seragam."
+        elif day <= 14:
+            stage = "Fase Pembibitan"
+            status = "Optimal"
+            desc = f"Fase pembibitan/seedling ({day} HST). Daun sejati 2-4 helai, irigasi terjaga optimal."
+        elif day <= 29:
+            stage = "Fase Vegetatif"
+            status = "Optimal"
+            desc = f"Fase vegetatif aktif ({day} HST). Pembentukan tajuk roset dan helaian daun hijau segar."
+        elif day <= 34:
+            stage = "Fase Pra-Panen"
+            status = "Optimal"
+            desc = f"Fase mendekati panen ({day} HST). Tajuk roset daun rimbun dan lebat."
+        elif day <= 39:
+            stage = "Fase Siap Panen"
+            status = "Harvest Ready"
+            desc = f"Fase siap panen komersial prima ({day} HST). Lebar daun >= 10 cm siap petik segar."
+        else:
+            stage = "Batas Panen Maksimal"
+            status = "Harvest Ready"
+            desc = f"Batas panen maksimal pakcoy 40 HST. Wajib segera dipanen agar pelepah tidak berserat keras."
+
+        variety = "Pakcoy Green Fortune" if day % 2 == 1 else "Pakcoy Nauli F1"
+        name = f"Pakcoy Batch {pid} ({stage} {day} HST)"
+        batch_code = f"Batch-2026-PCK-{day:02d}"
+        planting_date = f"2026-10-{max(1, 41 - day):02d}"
+        plants.append((pid, name, batch_code, variety, planting_date, day, day, status, desc))
+
+    # Tambahkan batch siklus penuh PCK-FULL40
+    plants.append((
+        "PCK-FULL40",
+        "Pakcoy Siklus Lengkap 40 Hari",
+        "Batch-2026-FULL-40D",
+        "Pakcoy Green Fortune",
+        "2026-09-20",
+        40,
+        40,
+        "Harvest Ready",
+        "Siklus pengamatan kontinu 40 hari penuh (1.600 observasi lengkap, Day 1-40) mencakup seluruh tahapan budidaya."
+    ))
+
     cursor.executemany("""
     INSERT INTO plants (plant_id, name, batch, variety, planting_date, current_day, current_dap, status, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, plants)
     
-    # 4. Simpan rekaman observasi per tanaman
-    plant_ranges = [
-        ("PCK-001", 10),
-        ("PCK-002", 20),
-        ("PCK-003", 30),
-        ("PCK-004", 36),
-        ("PCK-005", 40),
-        ("PCK-FULL40", 40),
-    ]
-    
-    for target_pid, end_d in plant_ranges:
+    # 4. Simpan rekaman observasi per tanaman (PCK-001 s.d. PCK-040 & PCK-FULL40)
+    for day in range(1, 41):
+        target_pid = f"PCK-{day:03d}"
+        sub_df = df[df['day'] <= day]
         sub_records = []
-        sub_df = df[df['day'] <= end_d]
         for _, r in sub_df.iterrows():
             sub_records.append((
                 target_pid, int(r['day']), int(r['dap']), r['time'],
@@ -207,12 +234,27 @@ def populate(force=False):
         INSERT INTO observations (plant_id, day, dap, time, soil_moisture, temperature, soil_condition, pump_status, leaf_width, maturity_level, criteria)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, sub_records)
+
+    # Observasi untuk PCK-FULL40
+    full_records = []
+    for _, r in df.iterrows():
+        full_records.append((
+            "PCK-FULL40", int(r['day']), int(r['dap']), r['time'],
+            float(r['soil_moisture']), float(r['temperature']), r['soil_condition'],
+            r['pump_status'], float(r['leaf_width']), float(r['maturity_level']), r['criteria']
+        ))
+    cursor.executemany("""
+    INSERT INTO observations (plant_id, day, dap, time, soil_moisture, temperature, soil_condition, pump_status, leaf_width, maturity_level, criteria)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, full_records)
         
     # 5. Notifikasi & Anomali Peringatan Cerdas
     anomalies = [
-        ("PCK-001", 3, "Soil Condition", "Medium", "Kelembaban Tinggi (Wet)", "Kelembaban media tanam semai tercatat 72% pada pagi hari, sirkulasi udara ditingkatkan."),
-        ("PCK-003", 26, "Soil Condition", "High", "Kekeringan Media Tanam (Dry)", "Kelembaban media tanam tercatat 48%, pompa penyiraman otomatis langsung diaktifkan."),
-        ("PCK-005", 40, "Masa Panen", "High", "Batas Panen Maksimal (40 HST)", "Tanaman PCK-005 telah mencapai batas usia panen maksimal pakcoy 40 HST (Standar kualitas pasar komersial). Segera lakukan pemanenan."),
+        ("PCK-003", 3, "Soil Condition", "Medium", "Kelembaban Tinggi (Wet)", "Kelembaban media tanam semai tercatat 72% pada pagi hari, sirkulasi udara ditingkatkan."),
+        ("PCK-010", 10, "Soil Condition", "Low", "Irigasi Optimal", "Kelembaban media tanam stabil di 55.6% dengan suhu 23.7°C."),
+        ("PCK-026", 26, "Soil Condition", "High", "Kekeringan Media Tanam (Dry)", "Kelembaban media tanam tercatat 48%, pompa penyiraman otomatis langsung diaktifkan."),
+        ("PCK-038", 38, "Masa Panen", "High", "Jendela Panen Prima (38 HST)", "Tanaman PCK-038 berada pada kematangan 95%, siap dipanen komersial."),
+        ("PCK-040", 40, "Masa Panen", "High", "Batas Panen Maksimal (40 HST)", "Tanaman PCK-040 telah mencapai batas usia panen maksimal pakcoy 40 HST (Standar kualitas pasar komersial). Segera lakukan pemanenan."),
     ]
     for a in anomalies:
         cursor.execute("""
@@ -233,7 +275,7 @@ def populate(force=False):
     except Exception as e:
         print(f"Catatan sinkronisasi root DB: {e}")
         
-    print("Populasi database dengan urutan kronologis PCK-001 s.d. PCK-005 sukses!")
+    print("Populasi database lengkap 40 Batch PCK-001 s.d. PCK-040 sukses!")
 
 if __name__ == "__main__":
     populate(force=True)
